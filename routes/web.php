@@ -66,6 +66,16 @@ Route::prefix('inventory')->middleware('auth:sanctum')->group(function () {
     Route::post('/start', [InventoryController::class, 'start']);
     Route::get('/processes', [InventoryController::class, 'processes']);
     Route::get('/{processId}/status', [InventoryController::class, 'status']);
+
+    // Metrics Routes
+    Route::get('/metrics', [\App\Http\Controllers\Api\MetricsController::class, 'stats']);
+    Route::get('/logs', [\App\Http\Controllers\Api\MetricsController::class, 'logs']);
+
+    // Blocked IPs
+    Route::get('/blocked-ips', [\App\Http\Controllers\Api\BlockedIpController::class, 'index']);
+    Route::post('/blocked-ips', [\App\Http\Controllers\Api\BlockedIpController::class, 'store']);
+    Route::delete('/blocked-ips/{ip_address}', [\App\Http\Controllers\Api\BlockedIpController::class, 'destroy']);
+
     Route::get('/{id}', [InventoryController::class, 'show']);
     Route::put('/{id}', [InventoryController::class, 'update']);
     Route::post('/{id}/images', [InventoryController::class, 'uploadImage']);

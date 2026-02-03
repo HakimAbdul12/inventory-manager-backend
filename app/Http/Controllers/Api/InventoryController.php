@@ -204,6 +204,51 @@ class InventoryController extends Controller
         ]);
     }
 
+     public function externalIndex(Request $request): JsonResponse
+    {
+        // For demo purposes, use a static user ID
+        $userId = $request->user()?->id ?? 'demo_user';
+
+        $items = InventoryItem::where('user_id', $userId)
+            ->with(['category'])
+            ->withCount('images')
+            ->orderByDesc('created_at')
+            ->paginate(10);
+
+        return response()->json([
+            'success' => true,
+            'data' => $items->map(function ($item) {
+                $data = $item->generated_data ?? [];
+                return [
+                    'id' => $item->id,
+                    'title' => $item->title,
+                    'status' => $item->status,
+                    'category' => $item->category->name,
+                    'primaryImage' => $item->primary_image,
+                    'createdAt' => $item->created_at->toIso8601String(),
+                    // Additional fields from generated data
+                    'make' => $data['make'] ?? null,
+                    'model' => $data['model'] ?? null,
+                    'year' => $data['year'] ?? null,
+                    'price' => $data['price'] ?? null,
+                    'condition' => $data['condition'] ?? null,
+                    'mileage' => $data['mileage'] ?? null,
+                    'color' => $data['color'] ?? null,
+                    'description' => isset($data['description'])
+                        ? \Illuminate\Support\Str::limit($data['description'], 120)
+                        : null,
+                    'imageCount' => $item->images_count,
+                ];
+            }),
+            'pagination' => [
+                'currentPage' => $items->currentPage(),
+                'lastPage' => $items->lastPage(),
+                'perPage' => $items->perPage(),
+                'total' => $items->total(),
+            ],
+        ]);
+    }
+
     /**
      * List user's generation processes.
      */
