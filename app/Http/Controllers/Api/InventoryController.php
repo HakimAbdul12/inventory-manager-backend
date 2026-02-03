@@ -10,7 +10,10 @@ use App\Services\InventoryGenerationService;
 use App\Services\ProcessTrackingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use App\Models\InventoryImage;
+use App\Jobs\ProcessInventoryImageJob;
 
 class InventoryController extends Controller
 {
@@ -163,6 +166,7 @@ class InventoryController extends Controller
 
         $items = InventoryItem::where('user_id', $userId)
             ->with(['category'])
+            ->withCount('images')
             ->orderByDesc('created_at')
             ->paginate(10);
 
@@ -188,7 +192,7 @@ class InventoryController extends Controller
                     'description' => isset($data['description'])
                         ? \Illuminate\Support\Str::limit($data['description'], 120)
                         : null,
-                    'imageCount' => count($item->images ?? []),
+                    'imageCount' => $item->images_count,
                 ];
             }),
             'pagination' => [
@@ -224,5 +228,136 @@ class InventoryController extends Controller
                 'createdAt' => $process->created_at->toIso8601String(),
             ]),
         ]);
+    }
+
+    /**
+     * Update inventory item details.
+     */
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $item = InventoryItem::find($id);
+
+        if (!$item) {
+            return response()->json(['success' => false, 'message' => 'Item not found'], 404);
+        }
+
+        // Merge existing data with new data
+        $currentData = $item->generated_data ?? [];
+        $newData = $request->input('generatedData', []);
+
+        $mergedData = array_merge($currentData, $newData);
+
+        $item->update(['generated_data' => $mergedData]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Item updated successfully',
+            'data' => $item->refresh(),
+        ]);
+    }
+
+    /**
+     * Upload an image for an inventory item.
+     */
+    public function uploadImage(Request $request, string $id): JsonResponse
+    {
+        $item = InventoryItem::find($id);
+
+        if (!$item) {
+            return response()->json(['success' => false, 'message' => 'Item not found'], 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'image' => 'required|image|max:10240', // 10MB max
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+        }
+
+        if ($request->hasFile('image')) {
+            $file = $request->file('image');
+            $filename = 'image_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            $path = "inventory/{$item->id}/{$filename}";
+
+            Storage::disk('public')->put($path, file_get_contents($file));
+
+            $image = InventoryImage::create([
+                'inventory_item_id' => $item->id,
+                'path' => $path,
+                'is_primary' => $item->images()->count() === 0,
+                'processing_status' => InventoryImage::STATUS_PENDING,
+                'generated_by' => 'user_upload',
+                'alt' => $item->title . ' - Uploaded Image',
+                'sizes' => ['original' => Storage::url($path)],
+            ]);
+
+            ProcessInventoryImageJob::dispatch($image)
+                ->onQueue(config('inventory.queue.name', 'inventory'));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Image uploaded successfully',
+                'data' => $image,
+            ]);
+        }
+
+        return response()->json(['success' => false, 'message' => 'No image file provided'], 400);
+    }
+
+    /**
+     * Set an image as primary.
+     */
+    public function setPrimaryImage(Request $request, string $id, string $imageId): JsonResponse
+    {
+        $item = InventoryItem::find($id);
+
+        if (!$item) {
+            return response()->json(['success' => false, 'message' => 'Item not found'], 404);
+        }
+
+        $image = InventoryImage::where('inventory_item_id', $id)->find($imageId);
+
+        if (!$image) {
+            return response()->json(['success' => false, 'message' => 'Image not found'], 404);
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($id, $imageId) {
+            InventoryImage::where('inventory_item_id', $id)
+                ->update(['is_primary' => false]);
+
+            InventoryImage::where('id', $imageId)
+                ->update(['is_primary' => true]);
+        });
+
+        return response()->json(['success' => true, 'message' => 'Primary image updated']);
+    }
+
+    /**
+     * Delete an image.
+     */
+    public function deleteImage(Request $request, string $id, string $imageId): JsonResponse
+    {
+        $image = InventoryImage::where('inventory_item_id', $id)->find($imageId);
+
+        if (!$image) {
+            return response()->json(['success' => false, 'message' => 'Image not found'], 404);
+        }
+
+        if (Storage::disk('public')->exists($image->path)) {
+            Storage::disk('public')->delete($image->path);
+        }
+
+        $wasPrimary = $image->is_primary;
+        $image->delete();
+
+        if ($wasPrimary) {
+            $newPrimary = InventoryImage::where('inventory_item_id', $id)->first();
+            if ($newPrimary) {
+                $newPrimary->update(['is_primary' => true]);
+            }
+        }
+
+        return response()->json(['success' => true, 'message' => 'Image deleted']);
     }
 }

@@ -17,20 +17,17 @@ class InventoryItem extends Model
         'category_id',
         'status',
         'generated_data',
-        'images',
         'metadata',
     ];
 
     protected $casts = [
         'generated_data' => 'array',
-        'images' => 'array',
         'metadata' => 'array',
     ];
 
     protected $attributes = [
         'status' => 'draft',
         'generated_data' => '{}',
-        'images' => '[]',
         'metadata' => '{}',
     ];
 
@@ -66,11 +63,19 @@ class InventoryItem extends Model
     }
 
     /**
+     * Get the images for the item.
+     */
+    public function images(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(InventoryImage::class)->orderBy('is_primary', 'desc');
+    }
+
+    /**
      * Get the primary image.
      */
-    public function getPrimaryImageAttribute(): ?array
+    public function getPrimaryImageAttribute(): ?InventoryImage
     {
-        return collect($this->images)->firstWhere('isPrimary', true);
+        return $this->images->firstWhere('is_primary', true);
     }
 
     /**
@@ -91,21 +96,7 @@ class InventoryItem extends Model
         $this->update(['generated_data' => $data]);
     }
 
-    /**
-     * Add an image to the item.
-     */
-    public function addImage(array $imageData): void
-    {
-        $images = $this->images ?? [];
 
-        // If this is the first image, make it primary
-        if (empty($images)) {
-            $imageData['isPrimary'] = true;
-        }
-
-        $images[] = $imageData;
-        $this->update(['images' => $images]);
-    }
 
     /**
      * Publish the item.

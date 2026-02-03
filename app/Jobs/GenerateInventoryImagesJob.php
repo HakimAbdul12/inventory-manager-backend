@@ -88,15 +88,31 @@ class GenerateInventoryImagesJob implements ShouldQueue
                         // Store the image
                         $imagePath = $this->storeImage($imageData, $process->id, $index);
 
+                        $alt = $this->generateAltText($generatedData, $index);
+
+                        // Create InventoryImage record
+                        $inventoryImage = \App\Models\InventoryImage::create([
+                            'inventory_item_id' => $inventoryItem->id,
+                            'path' => $imagePath,
+                            'prompt' => $prompt,
+                            'generated_by' => 'seedream-4.5',
+                            'alt' => $alt,
+                            'is_primary' => $index === 0,
+                            'processing_status' => \App\Models\InventoryImage::STATUS_PENDING,
+                        ]);
+
                         $images[] = [
-                            'url' => $imagePath ? Storage::url($imagePath) : $imageData,
-                            'thumbnail' => $imagePath ? Storage::url($imagePath) : $imageData,
-                            'alt' => $this->generateAltText($generatedData, $index),
+                            'url' => Storage::url($imagePath),
+                            'thumbnail' => Storage::url($imagePath),
+                            'alt' => $alt,
                             'isPrimary' => $index === 0,
                             'generatedBy' => 'seedream-4.5',
                             'prompt' => $prompt,
-                            'storagePath' => $imagePath,
                         ];
+
+                        // Dispatch background processing job
+                        ProcessInventoryImageJob::dispatch($inventoryImage)
+                            ->onQueue(config('inventory.queue.name', 'inventory'));
 
                         $step->addLog('success', "Image " . ($index + 1) . " generated successfully");
                     }
@@ -116,9 +132,11 @@ class GenerateInventoryImagesJob implements ShouldQueue
             }
 
             // Add images to inventory item
-            foreach ($images as $image) {
-                $inventoryItem->addImage($image);
-            }
+            // Images are now stored in relation, no need to update JSON column
+            // But we keep $images array for the broadcast event
+            // foreach ($images as $image) {
+            //     $inventoryItem->addImage($image);
+            // }
 
             $trackingService->completeStep($step, ['image_count' => count($images)]);
 
