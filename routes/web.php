@@ -49,7 +49,11 @@ Route::prefix('auth')->group(function () {
 Route::prefix('categories')->group(function () {
     Route::get('/', [CategoryController::class, 'index']);
     Route::get('/{slug}', [CategoryController::class, 'show']);
-    Route::get('/{slug}/fields', [CategoryController::class, 'show']); // Alias for frontend convenience
+    Route::get('/{slug}/fields', [CategoryController::class, 'show']);
+});
+
+Route::prefix('categories')->middleware('auth:sanctum')->group(function () {
+    Route::put('/{id}', [CategoryController::class, 'update']);
 });
 
 /*
@@ -67,4 +71,15 @@ Route::prefix('inventory')->middleware('auth:sanctum')->group(function () {
     Route::post('/{id}/images', [InventoryController::class, 'uploadImage']);
     Route::put('/{id}/images/{image}/primary', [InventoryController::class, 'setPrimaryImage']);
     Route::delete('/{id}/images/{image}', [InventoryController::class, 'deleteImage']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| API Key Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('api-keys')->middleware('auth:sanctum')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Api\ApiKeyController::class, 'index']);
+    Route::post('/', [\App\Http\Controllers\Api\ApiKeyController::class, 'store']);
+    Route::delete('/{id}', [\App\Http\Controllers\Api\ApiKeyController::class, 'destroy']);
 });
