@@ -29,6 +29,8 @@ return [
         'imports/*',
         'admin',
         'admin/*',
+        'profile',
+        'profile/*',
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

@@ -131,3 +131,15 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:admin'])->group(functi
     Route::post('/users/{id}/block', [\App\Http\Controllers\Api\AdminUserController::class, 'toggleBlock']);
     Route::delete('/users/{id}', [\App\Http\Controllers\Api\AdminUserController::class, 'destroy']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Profile Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('profile')->middleware('auth:sanctum')->group(function () {
+    Route::put('/', [\App\Http\Controllers\Api\ProfileController::class, 'update']);
+    Route::post('/avatar', [\App\Http\Controllers\Api\ProfileController::class, 'updateAvatar']);
+    Route::put('/password', [\App\Http\Controllers\Api\ProfileController::class, 'updatePassword']);
+    Route::delete('/', [\App\Http\Controllers\Api\ProfileController::class, 'destroy']);
+});

@@ -151,6 +151,10 @@ class AuthController extends Controller
                     'email_verified_at' => $user->email_verified_at,
                     'created_at' => $user->created_at->toIso8601String(),
                     'roles' => $user->getRoleNames(),
+                    'avatar' => $user->avatar,
+                    'dealer_code' => $user->dealer_code,
+                    'company_name' => $user->company_name,
+                    'phone' => $user->phone,
                 ],
             ],
         ]);

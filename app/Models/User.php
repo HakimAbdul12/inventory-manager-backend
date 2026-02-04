@@ -29,6 +29,7 @@ class User extends Authenticatable
         'company_name',
         'phone',
         'blocked_at',
+        'avatar',
     ];
 
     /**
