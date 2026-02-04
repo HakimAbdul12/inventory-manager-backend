@@ -124,23 +124,40 @@ class OpenRouterClient
      */
     protected function extractJson(string $content): ?array
     {
-        // First, try direct decode
-        $decoded = json_decode($content, true);
-        if (json_last_error() === JSON_ERROR_NONE) {
-            return $decoded;
-        }
-
-        // Try to find JSON object in the content
-        if (preg_match('/\{[\s\S]*\}/', $content, $matches)) {
-            $decoded = json_decode($matches[0], true);
+        // 1. Try to extract from markdown code blocks first (most reliable)
+        if (preg_match('/```(?:json)?\s*([\s\S]*?)\s*```/', $content, $matches)) {
+            $decoded = json_decode($matches[1], true);
             if (json_last_error() === JSON_ERROR_NONE) {
                 return $decoded;
             }
         }
 
-        // Try to find JSON array
-        if (preg_match('/\[[\s\S]*\]/', $content, $matches)) {
-            $decoded = json_decode($matches[0], true);
+        // 2. Try direct decode of the whole content
+        $decoded = json_decode($content, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            return $decoded;
+        }
+
+        // 3. Try to find the first valid JSON object or array
+        // We use non-greedy matching for the content inside to find the smallest valid block first?
+        // Actually, let's just look for the first '{' and the last '}'
+        $firstBrace = strpos($content, '{');
+        $lastBrace = strrpos($content, '}');
+
+        if ($firstBrace !== false && $lastBrace !== false && $lastBrace > $firstBrace) {
+            $possibleJson = substr($content, $firstBrace, $lastBrace - $firstBrace + 1);
+            $decoded = json_decode($possibleJson, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return $decoded;
+            }
+        }
+
+        $firstBracket = strpos($content, '[');
+        $lastBracket = strrpos($content, ']');
+
+        if ($firstBracket !== false && $lastBracket !== false && $lastBracket > $firstBracket) {
+            $possibleJson = substr($content, $firstBracket, $lastBracket - $firstBracket + 1);
+            $decoded = json_decode($possibleJson, true);
             if (json_last_error() === JSON_ERROR_NONE) {
                 return $decoded;
             }

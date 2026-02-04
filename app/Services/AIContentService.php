@@ -42,6 +42,45 @@ class AIContentService
     }
 
     /**
+     * Generate field mapping suggestions for CSV headers.
+     */
+    public function generateMapping(array $csvHeaders, array $categoryFields): array
+    {
+        $prompt = $this->buildMappingPrompt($csvHeaders, $categoryFields);
+
+        Log::info('Generating mapping suggestions', [
+            'headers_count' => count($csvHeaders),
+            'fields_count' => count($categoryFields),
+        ]);
+
+        $result = $this->client->jsonPrompt($prompt, [
+            'system' => $this->getMappingSystemPrompt(),
+            'temperature' => 0.1,
+            'max_tokens' => 3000,
+        ]);
+
+        // POST-PROCESSING: Only keep keys that actually exist in the CSV headers
+        // AI sometimes hallucinates headers to match all database fields
+        $filteredResult = [];
+        foreach ($result as $header => $field) {
+            // Check if this header exists in the CSV (case-insensitive)
+            $actualHeader = null;
+            foreach ($csvHeaders as $h) {
+                if (strtolower($h) === strtolower($header)) {
+                    $actualHeader = $h;
+                    break;
+                }
+            }
+
+            if ($actualHeader && $field !== null) {
+                $filteredResult[$actualHeader] = $field;
+            }
+        }
+
+        return $filteredResult;
+    }
+
+    /**
      * Build the inventory generation prompt.
      */
     protected function buildInventoryPrompt(
@@ -254,14 +293,17 @@ SYSTEM;
     /**
      * Build base prompt for image generation.
      */
-protected function buildImageBasePrompt(array $inventoryData): string
-{
-    $year  = $inventoryData['year'] ?? '2024';
-    $make  = $inventoryData['make'] ?? 'Luxury';
-    $model = $inventoryData['model'] ?? 'Car';
-    $color = $inventoryData['color'] ?? 'Metallic';
+    /**
+     * Build base prompt for image generation.
+     */
+    protected function buildImageBasePrompt(array $inventoryData): string
+    {
+        $year  = $inventoryData['year'] ?? '2024';
+        $make  = $inventoryData['make'] ?? 'Luxury';
+        $model = $inventoryData['model'] ?? 'Car';
+        $color = $inventoryData['color'] ?? 'Metallic';
 
-    return <<<PROMPT
+        return <<<PROMPT
 Commercial automotive photography of a {$year} {$make} {$model} in {$color} paint finish.
 
 Environment: 
@@ -276,5 +318,58 @@ Technical Quality:
 Photorealistic, 8k resolution, ray-traced reflections, sharp textures on tires and grill, showroom pristine condition.
 Strictly no text, no license plates, no watermarks, no people, no motion blur.
 PROMPT;
-}
+    }
+
+    /**
+     * Build the mapping generation prompt.
+     */
+    protected function buildMappingPrompt(array $csvHeaders, array $categoryFields): string
+    {
+        $headersList = implode("\n", array_map(fn($h) => "- $h", $csvHeaders));
+
+        $fieldsList = [];
+        foreach ($categoryFields as $field) {
+            $desc = $field['description'] ?? '';
+            $fieldsList[] = "- **{$field['key']}**: {$desc}"; // Only key and description matter mostly
+        }
+        $fieldsStr = implode("\n", $fieldsList);
+
+        return <<<PROMPT
+You are mapping CSV headers to database fields for an inventory import.
+
+## CSV HEADERS (Source)
+{$headersList}
+
+## DATABASE FIELDS (Target)
+{$fieldsStr}
+
+## YOUR TASK
+Match each CSV header to the most appropriate database field based on semantic meaning.
+
+CRITICAL RULES:
+1. You MUST ONLY use the keys listed in "DATABASE FIELDS". Do NOT invent new keys.
+2. You MUST ONLY map the headers listed in "CSV HEADERS". Do NOT invent new headers to match database fields.
+3. If a database field has no matching CSV header, do NOT include it in the output.
+4. "MSRP" or "Invoice" usually refers to a price field (like "price"). 
+5. "VIN" is "vin".
+
+Return a breakdown of mapped pairs only for headers that exist in the source.
+
+## OUTPUT FORMAT
+JSON Object where keys are CSV headers and values are the database field keys (or null).
+PROMPT;
+    }
+
+    /**
+     * Get the system prompt for mapping generation.
+     */
+    protected function getMappingSystemPrompt(): string
+    {
+        return <<<SYSTEM
+You are an intelligent data mapping assistant.
+Your goal is to accurately map CSV column headers to database schema fields.
+Strictly adhere to the provided schema keys.
+Return ONLY valid JSON. Do not include markdown formatting (example: ```json ... ```), just the raw JSON object.
+SYSTEM;
+    }
 }

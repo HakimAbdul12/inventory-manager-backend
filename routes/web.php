@@ -93,3 +93,16 @@ Route::prefix('api-keys')->middleware('auth:sanctum')->group(function () {
     Route::post('/', [\App\Http\Controllers\Api\ApiKeyController::class, 'store']);
     Route::delete('/{id}', [\App\Http\Controllers\Api\ApiKeyController::class, 'destroy']);
 });
+/*
+|--------------------------------------------------------------------------
+| Import Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('imports')->middleware('auth:sanctum')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Api\ImportController::class, 'index']);
+    Route::post('/', [\App\Http\Controllers\Api\ImportController::class, 'store']);
+    Route::get('/{id}', [\App\Http\Controllers\Api\ImportController::class, 'show']);
+    Route::put('/{id}/mapping', [\App\Http\Controllers\Api\ImportController::class, 'updateMapping']);
+    Route::post('/{id}/process', [\App\Http\Controllers\Api\ImportController::class, 'process']);
+    Route::post('/{id}/predict-mapping', [\App\Http\Controllers\Api\ImportController::class, 'predictMapping']);
+});
