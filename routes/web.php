@@ -1,10 +1,11 @@
 <?php
 
-use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\CategoryController;
-use App\Http\Controllers\Api\InventoryController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\TransferController;
+use App\Http\Controllers\Api\InventoryController;
 
 /*
 |--------------------------------------------------------------------------
@@ -105,4 +106,28 @@ Route::prefix('imports')->middleware('auth:sanctum')->group(function () {
     Route::put('/{id}/mapping', [\App\Http\Controllers\Api\ImportController::class, 'updateMapping']);
     Route::post('/{id}/process', [\App\Http\Controllers\Api\ImportController::class, 'process']);
     Route::post('/{id}/predict-mapping', [\App\Http\Controllers\Api\ImportController::class, 'predictMapping']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Transfer Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('transfers')->middleware('auth:sanctum')->group(function () {
+    Route::post('/search', [TransferController::class, 'search']);
+    Route::get('/', [TransferController::class, 'index']);
+    Route::post('/', [TransferController::class, 'store']);
+    Route::post('/{id}/accept', [TransferController::class, 'accept']);
+    Route::post('/{id}/decline', [TransferController::class, 'decline']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Admin Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('admin')->middleware(['auth:sanctum', 'role:admin'])->group(function () {
+    Route::get('/users', [\App\Http\Controllers\Api\AdminUserController::class, 'index']);
+    Route::post('/users/{id}/block', [\App\Http\Controllers\Api\AdminUserController::class, 'toggleBlock']);
+    Route::delete('/users/{id}', [\App\Http\Controllers\Api\AdminUserController::class, 'destroy']);
 });

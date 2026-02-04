@@ -27,6 +27,8 @@ return [
         'api-keys/*',
         'imports',
         'imports/*',
+        'admin',
+        'admin/*',
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
