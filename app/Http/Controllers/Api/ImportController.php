@@ -14,7 +14,7 @@ class ImportController extends Controller
 {
     public function index(): JsonResponse
     {
-        $imports = Import::latest()->get();
+        $imports = auth()->user()->imports()->latest()->get();
         return response()->json(['success' => true, 'data' => $imports]);
     }
 
@@ -32,6 +32,7 @@ class ImportController extends Controller
         $totalRows = count(file($file->getPathname())); // -1 if header exists? We'll clarify later.
 
         $import = Import::create([
+            'user_id' => auth()->id(),
             'file_path' => $path,
             'file_name' => $file->getClientOriginalName(),
             'total_rows' => $totalRows > 0 ? $totalRows - 1 : 0, // Assume header
@@ -53,7 +54,7 @@ class ImportController extends Controller
 
     public function show(string $id): JsonResponse
     {
-        $import = Import::findOrFail($id);
+        $import = auth()->user()->imports()->findOrFail($id);
 
         // If status is mapping, we might want to return CSV headers too if not stored
         $headers = [];
@@ -74,7 +75,7 @@ class ImportController extends Controller
 
     public function updateMapping(Request $request, string $id): JsonResponse
     {
-        $import = Import::findOrFail($id);
+        $import = auth()->user()->imports()->findOrFail($id);
 
         $request->validate([
             'mappings' => 'required|array',
@@ -89,7 +90,7 @@ class ImportController extends Controller
 
     public function process(string $id): JsonResponse
     {
-        $import = Import::findOrFail($id);
+        $import = auth()->user()->imports()->findOrFail($id);
 
         if ($import->status !== 'mapping') {
             return response()->json(['success' => false, 'message' => 'Import is not in mapping state'], 400);
@@ -106,7 +107,7 @@ class ImportController extends Controller
 
     public function predictMapping(string $id, \App\Services\AIContentService $aiService): JsonResponse
     {
-        $import = Import::findOrFail($id);
+        $import = auth()->user()->imports()->findOrFail($id);
 
         // 1. Get headers from CSV
         $headers = [];

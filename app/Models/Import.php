@@ -3,10 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Import extends Model
 {
     protected $fillable = [
+        'user_id',
         'file_path',
         'file_name',
         'total_rows',
@@ -21,4 +23,12 @@ class Import extends Model
         'mappings' => 'array',
         'errors' => 'array',
     ];
+
+    /**
+     * Get the user that owns the import.
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
 }

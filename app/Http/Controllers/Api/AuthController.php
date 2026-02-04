@@ -23,6 +23,8 @@ class AuthController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'password' => ['required', 'confirmed', PasswordRule::defaults()],
+            'company_name' => ['nullable', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:20'],
         ]);
 
         if ($validator->fails()) {
@@ -37,7 +39,11 @@ class AuthController extends Controller
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
+            'company_name' => $request->company_name,
+            'phone' => $request->phone,
         ]);
+
+        $user->assignRole('dealer');
 
         // Log the user in after registration
         Auth::login($user);
@@ -50,6 +56,9 @@ class AuthController extends Controller
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
+                    'dealer_code' => $user->dealer_code,
+                    'company_name' => $user->company_name,
+                    'role' => 'dealer',
                 ],
             ],
         ], 201);
