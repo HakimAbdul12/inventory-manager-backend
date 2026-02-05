@@ -119,6 +119,8 @@ Route::prefix('transfers')->middleware('auth:sanctum')->group(function () {
     Route::post('/', [TransferController::class, 'store']);
     Route::post('/{id}/accept', [TransferController::class, 'accept']);
     Route::post('/{id}/decline', [TransferController::class, 'decline']);
+    Route::post('/{id}/cancel', [TransferController::class, 'cancel']);
+    Route::get('/{id}/items', [TransferController::class, 'items']);
 });
 
 /*

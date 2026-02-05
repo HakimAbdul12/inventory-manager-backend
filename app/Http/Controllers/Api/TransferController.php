@@ -55,7 +55,8 @@ class TransferController extends Controller
             'status' => 'pending',
         ]);
 
-        // TODO: Broadcast event
+        $transfer->load(['sender:id,name,company_name', 'recipient:id,name,company_name']);
+        \App\Events\TransferUpdated::dispatch($transfer);
 
         return response()->json(['message' => 'Transfer request sent', 'data' => $transfer], 201);
     }
@@ -69,7 +70,10 @@ class TransferController extends Controller
         }
 
         $transfer->update(['status' => 'processing']);
-        ProcessTransferJob::dispatch($transfer);
+        ProcessTransferJob::dispatch($transfer)->onQueue('inventory');
+
+        $transfer->load(['sender:id,name,company_name', 'recipient:id,name,company_name']);
+        \App\Events\TransferUpdated::dispatch($transfer);
 
         return response()->json(['message' => 'Transfer accepted and processing started', 'data' => $transfer]);
     }
@@ -84,6 +88,50 @@ class TransferController extends Controller
 
         $transfer->update(['status' => 'declined']);
 
+        $transfer->load(['sender:id,name,company_name', 'recipient:id,name,company_name']);
+        \App\Events\TransferUpdated::dispatch($transfer);
+
         return response()->json(['message' => 'Transfer declined', 'data' => $transfer]);
+    }
+
+    public function cancel(string $id): JsonResponse
+    {
+        $transfer = Transfer::where('id', $id)->where('sender_id', auth()->id())->firstOrFail();
+
+        if ($transfer->status !== 'pending') {
+            return response()->json(['message' => 'Cannot cancel processed transfer'], 400);
+        }
+
+        $transfer->update(['status' => 'cancelled']);
+
+        $transfer->load(['sender:id,name,company_name', 'recipient:id,name,company_name']);
+        \App\Events\TransferUpdated::dispatch($transfer);
+
+        return response()->json(['message' => 'Transfer cancelled', 'data' => $transfer]);
+    }
+    public function items(Request $request, string $id): JsonResponse
+    {
+        $transfer = Transfer::where('id', $id)
+            ->where(function ($query) {
+                $query->where('sender_id', auth()->id())
+                    ->orWhere('recipient_id', auth()->id());
+            })
+            ->firstOrFail();
+
+        $items = \App\Models\InventoryItem::whereIn('id', $transfer->inventory_ids ?? [])
+            ->with(['category'])
+            ->withCount('images')
+            ->paginate($request->input('per_page', 10));
+
+        return response()->json([
+            'success' => true,
+            'data' => $items->items(),
+            'pagination' => [
+                'currentPage' => $items->currentPage(),
+                'lastPage' => $items->lastPage(),
+                'perPage' => $items->perPage(),
+                'total' => $items->total(),
+            ],
+        ]);
     }
 }

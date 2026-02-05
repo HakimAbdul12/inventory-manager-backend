@@ -31,6 +31,10 @@ return [
         'admin/*',
         'profile',
         'profile/*',
+        'transfers',
+        'transfers/*',
+        'search',
+        'search/*',
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
