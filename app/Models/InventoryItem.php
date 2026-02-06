@@ -18,17 +18,22 @@ class InventoryItem extends Model
         'status',
         'generated_data',
         'metadata',
+        'confidence_score',
+        'analysis_results',
     ];
 
     protected $casts = [
         'generated_data' => 'array',
         'metadata' => 'array',
+        'confidence_score' => 'integer',
+        'analysis_results' => 'array',
     ];
 
     protected $attributes = [
         'status' => 'draft',
         'generated_data' => '{}',
         'metadata' => '{}',
+        'analysis_results' => '{}',
     ];
 
     /**

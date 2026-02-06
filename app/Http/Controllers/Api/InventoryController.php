@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\InventoryItem;
 use App\Models\InventoryProcess;
+use App\Services\AIContentService;
 use App\Services\InventoryGenerationService;
 use App\Services\ProcessTrackingService;
 use Illuminate\Http\JsonResponse;
@@ -19,13 +20,16 @@ class InventoryController extends Controller
 {
     protected InventoryGenerationService $generationService;
     protected ProcessTrackingService $trackingService;
+    protected AIContentService $aiService;
 
     public function __construct(
         InventoryGenerationService $generationService,
-        ProcessTrackingService $trackingService
+        ProcessTrackingService $trackingService,
+        AIContentService $aiService
     ) {
         $this->generationService = $generationService;
         $this->trackingService = $trackingService;
+        $this->aiService = $aiService;
     }
 
     /**
@@ -149,6 +153,8 @@ class InventoryController extends Controller
                 ],
                 'generatedData' => $item->generated_data,
                 'images' => $item->images,
+                'analysis_results' => $item->analysis_results,
+                'confidence_score' => $item->confidence_score,
                 'metadata' => $item->metadata,
                 'createdAt' => $item->created_at->toIso8601String(),
                 'updatedAt' => $item->updated_at->toIso8601String(),
@@ -189,10 +195,13 @@ class InventoryController extends Controller
                     'condition' => $data['condition'] ?? null,
                     'mileage' => $data['mileage'] ?? null,
                     'color' => $data['color'] ?? null,
+                    
                     'description' => isset($data['description'])
                         ? \Illuminate\Support\Str::limit($data['description'], 120)
                         : null,
                     'imageCount' => $item->images_count,
+                    'metadata' => $item->metadata,
+                    'confidence_score' => $item->confidence_score,
                 ];
             }),
             'pagination' => [
@@ -204,7 +213,7 @@ class InventoryController extends Controller
         ]);
     }
 
-     public function externalIndex(Request $request): JsonResponse
+    public function externalIndex(Request $request): JsonResponse
     {
         // For demo purposes, use a static user ID
         $userId = $request->user()?->id ?? 'demo_user';
@@ -404,5 +413,39 @@ class InventoryController extends Controller
         }
 
         return response()->json(['success' => true, 'message' => 'Image deleted']);
+    }
+
+    /**
+     * Analyze inventory item quality and market price.
+     */
+    public function analyze(string $id): JsonResponse
+    {
+        $item = InventoryItem::with('images')->find($id);
+
+        if (!$item) {
+            return response()->json(['success' => false, 'message' => 'Inventory item not found'], 404);
+        }
+
+        try {
+            $analysis = $this->aiService->analyzeInventory($item);
+
+            $item->update([
+                'confidence_score' => $analysis['score'] ?? 0,
+                'analysis_results' => $analysis,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'score' => $item->confidence_score,
+                    'analysis' => $item->analysis_results,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Analysis failed: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

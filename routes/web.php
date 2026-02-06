@@ -78,10 +78,11 @@ Route::prefix('inventory')->middleware('auth:sanctum')->group(function () {
     Route::delete('/blocked-ips/{ip_address}', [\App\Http\Controllers\Api\BlockedIpController::class, 'destroy']);
 
     Route::get('/{id}', [InventoryController::class, 'show']);
-    Route::put('/{id}', [InventoryController::class, 'update']);
+    Route::post('/{id}', [InventoryController::class, 'update']);
     Route::post('/{id}/images', [InventoryController::class, 'uploadImage']);
     Route::put('/{id}/images/{image}/primary', [InventoryController::class, 'setPrimaryImage']);
     Route::delete('/{id}/images/{image}', [InventoryController::class, 'deleteImage']);
+    Route::post('/{id}/analyze', [InventoryController::class, 'analyze']);
 });
 
 /*

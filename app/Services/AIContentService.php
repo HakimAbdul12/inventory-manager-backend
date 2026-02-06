@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Category;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class AIContentService
 {
@@ -371,5 +372,216 @@ Your goal is to accurately map CSV column headers to database schema fields.
 Strictly adhere to the provided schema keys.
 Return ONLY valid JSON. Do not include markdown formatting (example: ```json ... ```), just the raw JSON object.
 SYSTEM;
+    }
+
+    /**
+     * Analyze inventory item quality, market pricing, and image matching.
+     */
+    public function analyzeInventory(\App\Models\InventoryItem $item): array
+    {
+        $data = $item->generated_data ?? [];
+        $primaryImage = $item->primary_image;
+
+        $base64Image = null;
+        $imageUrl = null;
+
+        if ($primaryImage) {
+            // Default to original path
+            $storagePath = $primaryImage->path;
+
+            // Try to use optimized sizes (Medium > Large > Original)
+            // Note: sizes paths are full URLs like "/storage/inventory/..." so we need to convert to relative storage path
+            if (!empty($primaryImage->sizes['original'])) {
+                $storagePath = preg_replace('/^\/storage\//', '', $primaryImage->sizes['original']);
+            } elseif (!empty($primaryImage->sizes['large'])) {
+                $storagePath = preg_replace('/^\/storage\//', '', $primaryImage->sizes['large']);
+            } elseif (!empty($primaryImage->sizes['medium'])) {
+                $storagePath = preg_replace('/^\/storage\//', '', $primaryImage->sizes['medium']);
+            }
+
+            if (Storage::disk('public')->exists($storagePath)) {
+                $path = Storage::disk('public')->path($storagePath);
+                $type = pathinfo($path, PATHINFO_EXTENSION);
+                $dataContent = file_get_contents($path);
+                $base64Image = 'data:image/' . $type . ';base64,' . base64_encode($dataContent);
+            } else {
+                // Fallback to public URL
+                $imageUrl = config('app.url') . Storage::url($primaryImage->path);
+            }
+        }
+
+        $prompt = $this->buildAnalysisPrompt($data, $primaryImage);
+
+        $messages = [];
+
+        // System Message
+        $messages[] = [
+            'role' => 'system',
+            'content' => $this->getAnalysisSystemPrompt(),
+        ];
+
+        // User Message (Text + Image)
+        $userContent = [];
+        $userContent[] = [
+            'type' => 'text',
+            'text' => $prompt,
+        ];
+
+        if ($base64Image) {
+            $userContent[] = [
+                'type' => 'image_url',
+                'image_url' => [
+                    'url' => $base64Image
+                ]
+            ];
+        } elseif ($imageUrl) {
+            $userContent[] = [
+                'type' => 'image_url',
+                'image_url' => [
+                    'url' => $imageUrl
+                ]
+            ];
+        }
+
+        $messages[] = [
+            'role' => 'user',
+            'content' => $userContent,
+        ];
+
+        Log::info('Starting inventory analysis', [
+            'item_id' => $item->id,
+            'has_image' => $base64Image ? 'base64' : ($imageUrl ? 'url' : 'no'),
+            'model' => config('openrouter.vision_model'),
+        ]);
+
+        $result = $this->client->chatCompletion($messages, [
+            'model' => config('openrouter.vision_model'),
+            'temperature' => 0.2,
+            'max_tokens' => 1000,
+            'json_mode' => true,
+        ]);
+
+        $content = $result['content'];
+        $json = $this->extractJson($content);
+
+        if ($json === null) {
+            Log::error('JSON extraction failed', ['content' => $content]);
+            return [
+                'score' => 0,
+                'summary' => 'Analysis failed to generate valid JSON output.',
+                'breakdown' => []
+            ];
+        }
+
+        return $json;
+    }
+
+    /**
+     * Build the analysis prompt.
+     */
+    protected function buildAnalysisPrompt(array $data, ?\App\Models\InventoryImage $image = null): string
+    {
+        $json = json_encode($data, JSON_PRETTY_PRINT);
+        $currentDate = now()->format('Y-m-d');
+
+        $imageContext = "";
+        if ($image) {
+            $imageContext = <<<CONTEXT
+            
+## IMAGE METADATA
+The attached image has the following metadata:
+- Original Generation Prompt: "{$image->prompt}"
+- Alt Text: "{$image->alt}"
+- Generator: "{$image->generated_by}"
+CONTEXT;
+        }
+
+        return <<<PROMPT
+Please analyze this vehicle inventory listing for quality, market pricing, and visual consistency.
+
+## VEHICLE DATA
+{$json}
+{$imageContext}
+
+## CONTEXT
+Current Date: {$currentDate}
+The image provided is the primary photo for this listing.
+
+## YOUR TASK
+1. **Data Quality Check**: Are all critical fields present? Is the description professional and detailed?
+2. **Market Analysis**: Based on the Year, Make, Model, Mileage, and Condition, is the Price realistc? 
+   - Note: We are in year 2026. A 2015 car is 11 years old.
+   - Depreciation: deeply consider standard depreciation curves.
+   - If price is missing, flag it.
+   - If price is significantly high or low, flag it.
+3. **Visual Verification**: Does the car in the image match the description?
+   - Compare the image visual details with the Vehicle Data.
+   - Compare the image with the "IMAGE METADATA" (Original Prompt) to see if it respects the requested features.
+   - Check Color.
+   - Check Make/Model (if recognizable).
+   - Check for visible damage vs condition rating.
+
+## OUTPUT FORMAT
+Return valid JSON:
+{
+    "score": <integer 0-100>, // Overall confidence score
+    "summary": "<string>", // 2-3 sentence summary of findings
+    "breakdown": {
+        "data_quality": {
+            "score": <0-100>,
+            "issues": ["<string>", ...],
+            "feedback": "<string>"
+        },
+        "market_pricing": {
+            "score": <0-100>,
+            "estimated_market_value": "<string range or N/A>", 
+            "is_fair_price": <boolean>,
+            "feedback": "<string>"
+        },
+        "visual_match": {
+            "score": <0-100>,
+            "match_confirmed": <boolean>,
+            "feedback": "<string>"
+        }
+    }
+}
+PROMPT;
+    }
+
+    /**
+     * System prompt for analysis.
+     */
+    protected function getAnalysisSystemPrompt(): string
+    {
+        return <<<SYSTEM
+You are an expert automotive inventory auditor and market analyst. 
+Your job is to protect the dealership from bad listings. 
+You verify data integrity, check pricing against current market trends (in 2026), and visually confirm the vehicle matches its description.
+Be strict but fair. If a price seems like a placeholder (e.g. $1 or $999999), penalize the score heavily.
+SYSTEM;
+    }
+
+    protected function extractJson(string $content): ?array
+    {
+        if (preg_match('/```(?:json)?\s*([\s\S]*?)\s*```/', $content, $matches)) {
+            $decoded = json_decode($matches[1], true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return $decoded;
+            }
+        }
+        $decoded = json_decode($content, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            return $decoded;
+        }
+        $firstBrace = strpos($content, '{');
+        $lastBrace = strrpos($content, '}');
+        if ($firstBrace !== false && $lastBrace !== false && $lastBrace > $firstBrace) {
+            $possibleJson = substr($content, $firstBrace, $lastBrace - $firstBrace + 1);
+            $decoded = json_decode($possibleJson, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return $decoded;
+            }
+        }
+        return null;
     }
 }

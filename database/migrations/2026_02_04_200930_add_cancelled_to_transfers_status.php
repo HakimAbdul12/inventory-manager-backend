@@ -13,6 +13,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         // Dropping the constraint
         DB::statement("ALTER TABLE transfers DROP CONSTRAINT IF EXISTS transfers_status_check");
         // Re-adding with 'cancelled'
@@ -24,6 +28,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::statement("ALTER TABLE transfers DROP CONSTRAINT IF EXISTS transfers_status_check");
         DB::statement("ALTER TABLE transfers ADD CONSTRAINT transfers_status_check CHECK (status::text = ANY (ARRAY['pending'::text, 'accepted'::text, 'declined'::text, 'processing'::text, 'completed'::text, 'failed'::text]))");
     }

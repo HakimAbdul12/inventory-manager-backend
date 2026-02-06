@@ -17,6 +17,8 @@ return [
 
     'model' => env('OPENROUTER_MODEL', 'liquid/lfm-2.5-1.2b-thinking:free'),
 
+    'vision_model' => env('OPENROUTER_VISION_MODEL', 'nvidia/nemotron-nano-12b-v2-vl:free'),
+
     'image_model' => env('OPENROUTER_IMAGE_MODEL', 'bytedance-seed/seedream-4.5'),
 
     /*
