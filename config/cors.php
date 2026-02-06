@@ -35,6 +35,8 @@ return [
         'transfers/*',
         'search',
         'search/*',
+        'virtual-showrooms',
+        'virtual-showrooms/*',
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

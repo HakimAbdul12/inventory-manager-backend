@@ -146,3 +146,14 @@ Route::prefix('profile')->middleware('auth:sanctum')->group(function () {
     Route::put('/password', [\App\Http\Controllers\Api\ProfileController::class, 'updatePassword']);
     Route::delete('/', [\App\Http\Controllers\Api\ProfileController::class, 'destroy']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Virtual Showroom Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('virtual-showrooms')->middleware('auth:sanctum')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Api\VirtualShowroomController::class, 'index']);
+    Route::post('/', [\App\Http\Controllers\Api\VirtualShowroomController::class, 'store']);
+    Route::delete('/{id}', [\App\Http\Controllers\Api\VirtualShowroomController::class, 'destroy']);
+});
