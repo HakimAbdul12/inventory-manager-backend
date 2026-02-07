@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Events\ImageGenerationCompleted;
 use App\Events\ImageGenerationSkipped;
 use App\Models\InventoryProcess;
+use App\Models\VirtualShowroom;
 use App\Services\AIContentService;
 use App\Services\InventoryGenerationService;
 use App\Services\OpenRouterClient;
@@ -67,9 +68,38 @@ class GenerateInventoryImagesJob implements ShouldQueue
 
             $generatedData = $inventoryItem->generated_data ?? [];
             $imageCount = $process->getImageCount();
+            $showroomDescription = null;
+            $showroomImageBase64 = null;
+
+            // Check for virtual showroom selection
+            if (!empty($process->options['virtualShowroomId'])) {
+                $showroom = VirtualShowroom::find($process->options['virtualShowroomId']);
+                if ($showroom) {
+                    if (!empty($showroom->description)) {
+                        $showroomDescription = $showroom->description;
+                        $step->addLog('info', "Using virtual showroom description: {$showroom->name}");
+                    }
+
+                    if (!empty($showroom->image_path)) {
+                        try {
+                            if (Storage::disk('public')->exists($showroom->image_path)) {
+                                $path = Storage::disk('public')->path($showroom->image_path);
+                                $type = pathinfo($path, PATHINFO_EXTENSION);
+                                $dataContent = file_get_contents($path);
+                                $showroomImageBase64 = 'data:image/' . $type . ';base64,' . base64_encode($dataContent);
+                                $step->addLog('info', "Using virtual showroom image as input (encoded)");
+                            } else {
+                                $step->addLog('warning', "Virtual showroom image file not found: {$showroom->image_path}");
+                            }
+                        } catch (\Exception $e) {
+                            $step->addLog('warning', "Failed to encode showroom image: " . $e->getMessage());
+                        }
+                    }
+                }
+            }
 
             // Generate image prompts using AI
-            $imagePrompts = $aiService->generateImagePrompts($generatedData, $imageCount);
+            $imagePrompts = $aiService->generateImagePrompts($generatedData, $imageCount, $showroomDescription, !empty($showroomImageBase64));
             $step->addLog('info', "Generated {$imageCount} image prompts");
 
             $images = [];
@@ -80,7 +110,18 @@ class GenerateInventoryImagesJob implements ShouldQueue
                     $step->addLog('info', "Generating image " . ($index + 1) . " of {$imageCount}");
 
                     // Call OpenRouter with Seedream model
-                    $generatedImages = $openRouterClient->generateImages($prompt);
+                    $options = [];
+                    if ($showroomImageBase64) {
+                        $options['inputImage'] = $showroomImageBase64;
+                    }
+
+                    Log::info('Generating image with options', [
+                        'process_id' => $process->id,
+                        'index' => $index,
+                        'has_input_image' => !empty($options['inputImage'])
+                    ]);
+
+                    $generatedImages = $openRouterClient->generateImages($prompt, $options);
 
                     if (!empty($generatedImages)) {
                         $imageData = $generatedImages[0]['data']; // base64 data URL

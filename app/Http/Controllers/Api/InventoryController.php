@@ -44,6 +44,7 @@ class InventoryController extends Controller
             'options' => 'nullable|array',
             'options.generateImages' => 'nullable|boolean',
             'options.imageCount' => 'nullable|integer|min:1|max:10',
+            'options.virtualShowroomId' => 'nullable|string|exists:virtual_showrooms,id',
         ]);
 
         if ($validator->fails()) {
@@ -150,6 +151,7 @@ class InventoryController extends Controller
                 'category' => [
                     'name' => $item->category->name,
                     'slug' => $item->category->slug,
+                    'fields' => $item->category->fields,
                 ],
                 'generatedData' => $item->generated_data,
                 'images' => $item->images,
@@ -195,7 +197,7 @@ class InventoryController extends Controller
                     'condition' => $data['condition'] ?? null,
                     'mileage' => $data['mileage'] ?? null,
                     'color' => $data['color'] ?? null,
-                    
+
                     'description' => isset($data['description'])
                         ? \Illuminate\Support\Str::limit($data['description'], 120)
                         : null,

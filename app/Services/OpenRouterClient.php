@@ -202,11 +202,25 @@ class OpenRouterClient
     {
         $imageModel = $options['model'] ?? config('openrouter.image_model');
         $imageTimeout = config('openrouter.image_timeout', 120);
+        $inputImage = $options['inputImage'] ?? null;
+
+        $messageContent = [['type' => 'text', 'text' => $prompt]];
+
+        if ($inputImage) {
+            $messageContent[] = [
+                'type' => 'image_url',
+                'image_url' => ['url' => $inputImage]
+            ];
+        }
 
         $payload = [
             'model' => $imageModel,
             'messages' => [
-                ['role' => 'user', 'content' => $prompt],
+                [
+                    'role' => 'user',
+                    // If inputImage is present, use array format. Otherwise use string for compatibility if model expects it (though array is usually fine)
+                    'content' => $inputImage ? $messageContent : $prompt
+                ],
             ],
         ];
 

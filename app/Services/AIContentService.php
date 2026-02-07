@@ -166,7 +166,8 @@ OUTPUT;
                 $line .= ' [AI-GENERATED]';
             }
 
-            $line .= ": {$field['description']}";
+            $description = $field['description'] ?? '';
+            $line .= ": {$description}";
 
             if (isset($field['options'])) {
                 $line .= " Options: " . implode(', ', $field['options']);
@@ -278,9 +279,9 @@ SYSTEM;
     /**
      * Generate image prompts for the inventory item.
      */
-    public function generateImagePrompts(array $inventoryData, int $count = 3): array
+    public function generateImagePrompts(array $inventoryData, int $count = 3, ?string $showroomDescription = null, bool $hasInputImage = false): array
     {
-        $basePrompt = $this->buildImageBasePrompt($inventoryData);
+        $basePrompt = $this->buildImageBasePrompt($inventoryData, $showroomDescription, $hasInputImage);
         $angles = ['front 3/4 view', 'rear 3/4 view', 'side profile', 'interior dashboard', 'interior seats'];
 
         $prompts = [];
@@ -297,18 +298,26 @@ SYSTEM;
     /**
      * Build base prompt for image generation.
      */
-    protected function buildImageBasePrompt(array $inventoryData): string
+    protected function buildImageBasePrompt(array $inventoryData, ?string $showroomDescription = null, bool $hasInputImage = false): string
     {
         $year  = $inventoryData['year'] ?? '2024';
         $make  = $inventoryData['make'] ?? 'Luxury';
         $model = $inventoryData['model'] ?? 'Car';
         $color = $inventoryData['color'] ?? 'Metallic';
 
+        if ($showroomDescription) {
+            $environment = "Custom Showroom Environment: {$showroomDescription}";
+        } elseif ($hasInputImage) {
+            $environment = "Custom Showroom Environment: The vehicle positioned naturally within the provided background image. Match lighting and perspective of the background.";
+        } else {
+            $environment = "Professional minimalist infinity cove studio, seamless matte grey floor merging into a soft light-grey background. Zero horizon line.";
+        }
+
         return <<<PROMPT
 Commercial automotive photography of a {$year} {$make} {$model} in {$color} paint finish.
 
 Environment: 
-Professional minimalist infinity cove studio, seamless matte grey floor merging into a soft light-grey background. Zero horizon line. 
+{$environment}
 
 Lighting & Composition:
 Large overhead softbox lighting (top-down) creating soft, elegant highlights on the car's body contours. 
