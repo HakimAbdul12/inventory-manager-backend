@@ -52,3 +52,15 @@ Broadcast::channel('user.{userId}.processes', function ($user, $userId) {
 
     return true; // Allow for development
 });
+
+/*
+|--------------------------------------------------------------------------
+| User Inbox Channel
+|--------------------------------------------------------------------------
+|
+| This channel is used for real-time messages.
+|
+*/
+Broadcast::channel('user.{id}.inbox', function ($user, $id) {
+    return (int) $user->id === (int) $id;
+});

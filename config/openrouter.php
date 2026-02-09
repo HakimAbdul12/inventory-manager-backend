@@ -19,7 +19,7 @@ return [
 
     'vision_model' => env('OPENROUTER_VISION_MODEL', 'nvidia/nemotron-nano-12b-v2-vl:free'),
 
-    'image_model' => env('OPENROUTER_IMAGE_MODEL', 'bytedance-seed/seedream-4.5'),
+    'image_model' => env('OPENROUTER_IMAGE_MODEL', 'stabilityai/stable-diffusion-2-1'),
 
     /*
     |--------------------------------------------------------------------------

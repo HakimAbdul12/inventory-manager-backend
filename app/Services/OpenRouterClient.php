@@ -113,12 +113,19 @@ class OpenRouterClient
         $json = $this->extractJson($content);
 
         if ($json === null) {
+            Log::error('Failed to parse JSON from AI response', [
+                'content_preview' => substr($content, 0, 1000), // Log first 1000 chars
+                'content_length' => strlen($content),
+            ]);
             throw new \RuntimeException("Failed to parse JSON from AI response: {$content}");
         }
 
         return $json;
     }
 
+    /**
+     * Extract JSON from a string that might contain additional text.
+     */
     /**
      * Extract JSON from a string that might contain additional text.
      */
@@ -138,26 +145,35 @@ class OpenRouterClient
             return $decoded;
         }
 
-        // 3. Try to find the first valid JSON object or array
-        // We use non-greedy matching for the content inside to find the smallest valid block first?
-        // Actually, let's just look for the first '{' and the last '}'
-        $firstBrace = strpos($content, '{');
-        $lastBrace = strrpos($content, '}');
+        // 3. Robust extraction: Find the outer-most JSON object or array
+        // We look for the first '{' or '[' and the last '}' or ']'
+        $p1 = strpos($content, '{');
+        $p2 = strpos($content, '[');
+        $first = null;
 
-        if ($firstBrace !== false && $lastBrace !== false && $lastBrace > $firstBrace) {
-            $possibleJson = substr($content, $firstBrace, $lastBrace - $firstBrace + 1);
+        if ($p1 !== false && ($p2 === false || $p1 < $p2)) {
+            $first = '{';
+            $start = $p1;
+            $end = strrpos($content, '}');
+        } elseif ($p2 !== false) {
+            $first = '[';
+            $start = $p2;
+            $end = strrpos($content, ']');
+        }
+
+        if (isset($start, $end) && $end > $start) {
+            $possibleJson = substr($content, $start, $end - $start + 1);
+
+            // Cleanup: Sometimes there are valid JSONs with trailing commas or comments that PHP's json_decode hates
+            // But let's try strict decode first
             $decoded = json_decode($possibleJson, true);
             if (json_last_error() === JSON_ERROR_NONE) {
                 return $decoded;
             }
-        }
 
-        $firstBracket = strpos($content, '[');
-        $lastBracket = strrpos($content, ']');
-
-        if ($firstBracket !== false && $lastBracket !== false && $lastBracket > $firstBracket) {
-            $possibleJson = substr($content, $firstBracket, $lastBracket - $firstBracket + 1);
-            $decoded = json_decode($possibleJson, true);
+            // Fallback: Try to clean potentially invalid JSON (e.g. control characters)
+            $cleaned = preg_replace('/[\x00-\x1F\x7F]/u', '', $possibleJson);
+            $decoded = json_decode($cleaned, true);
             if (json_last_error() === JSON_ERROR_NONE) {
                 return $decoded;
             }

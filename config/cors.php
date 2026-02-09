@@ -37,6 +37,8 @@ return [
         'search/*',
         'virtual-showrooms',
         'virtual-showrooms/*',
+        'messages',
+        'messages/*',
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

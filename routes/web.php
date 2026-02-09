@@ -111,6 +111,20 @@ Route::prefix('imports')->middleware('auth:sanctum')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
+| Message Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('messages')->middleware('auth:sanctum')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Api\MessageController::class, 'index']);
+    Route::get('/sent', [\App\Http\Controllers\Api\MessageController::class, 'sent']);
+    Route::post('/', [\App\Http\Controllers\Api\MessageController::class, 'store']);
+    Route::get('/unread-count', [\App\Http\Controllers\Api\MessageController::class, 'unreadCount']);
+    Route::get('/{id}', [\App\Http\Controllers\Api\MessageController::class, 'show']);
+    Route::delete('/{id}', [\App\Http\Controllers\Api\MessageController::class, 'destroy']);
+});
+
+/*
+|--------------------------------------------------------------------------
 | Transfer Routes (Protected)
 |--------------------------------------------------------------------------
 */
