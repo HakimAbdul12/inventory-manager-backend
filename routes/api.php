@@ -10,4 +10,5 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\TrackApiUsage::class])->
         Route::get('/', [InventoryController::class, 'externalIndex']);
         Route::get('/{id}', [InventoryController::class, 'externalShow']);
     });
+
 });

@@ -7,6 +7,11 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\TransferController;
 use App\Http\Controllers\Api\InventoryController;
 
+use App\Http\Controllers\Api\VehicleController;
+use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\AINegotiatorController;
+use App\Http\Controllers\Api\AcquisitionController;
+
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -170,4 +175,21 @@ Route::prefix('virtual-showrooms')->middleware('auth:sanctum')->group(function (
     Route::get('/', [\App\Http\Controllers\Api\VirtualShowroomController::class, 'index']);
     Route::post('/', [\App\Http\Controllers\Api\VirtualShowroomController::class, 'store']);
     Route::delete('/{id}', [\App\Http\Controllers\Api\VirtualShowroomController::class, 'destroy']);
+});
+
+Route::middleware('auth:sanctum')->group(function () {
+    // Automotive / DIS Routes
+    Route::get('/dashboard/war-room', [DashboardController::class, 'warRoom']);
+
+    Route::prefix('vehicles')->group(function () {
+        Route::get('/', [VehicleController::class, 'index']);
+        Route::post('/', [VehicleController::class, 'store']);
+        Route::get('/{id}', [VehicleController::class, 'show']);
+        Route::post('/decode-vin', [VehicleController::class, 'decodeVin']);
+        Route::post('/{id}/pricing/calculate', [VehicleController::class, 'updatePricing']);
+        Route::post('/{id}/negotiate', [AINegotiatorController::class, 'chat']);
+        Route::get('/{id}/exit-strategies', [AcquisitionController::class, 'proposeExit']);
+    });
+
+    Route::get('/acquisition/recommendations', [AcquisitionController::class, 'index']);
 });

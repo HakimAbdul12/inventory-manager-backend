@@ -68,6 +68,14 @@ class InventoryItem extends Model
     }
 
     /**
+     * Get the vehicle associated with this inventory item.
+     */
+    public function vehicle(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Vehicle::class, 'inventory_item_id');
+    }
+
+    /**
      * Get the images for the item.
      */
     public function images(): \Illuminate\Database\Eloquent\Relations\HasMany

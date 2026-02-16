@@ -39,6 +39,10 @@ return [
         'virtual-showrooms/*',
         'messages',
         'messages/*',
+        'acquisition',
+        'acquisition/*',
+        'vehicles',
+        'vehicles/*',
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
