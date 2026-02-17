@@ -64,3 +64,31 @@ Broadcast::channel('user.{userId}.processes', function ($user, $userId) {
 Broadcast::channel('user.{id}.inbox', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
+
+/*
+|--------------------------------------------------------------------------
+| Dealer Hub Chat Channel
+|--------------------------------------------------------------------------
+|
+| This channel is used for real-time dealer-to-dealer chat messages.
+| Users must be a member of the chat room to subscribe.
+|
+*/
+Broadcast::channel('chat.{roomId}', function ($user, $roomId) {
+    return \App\Models\ChatRoomMember::where('chat_room_id', $roomId)
+        ->where('user_id', $user->id)
+        ->exists();
+});
+
+/*
+|--------------------------------------------------------------------------
+| Dealer Hub Notifications Channel
+|--------------------------------------------------------------------------
+|
+| Per-user channel for real-time notifications (connection requests,
+| accepted connections, new message alerts).
+|
+*/
+Broadcast::channel('user.{id}.notifications', function ($user, $id) {
+    return (int) $user->id === (int) $id;
+});

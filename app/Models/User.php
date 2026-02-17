@@ -4,7 +4,9 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
@@ -30,6 +32,15 @@ class User extends Authenticatable
         'phone',
         'blocked_at',
         'avatar',
+        'bio',
+        'banner_image',
+        'location_city',
+        'location_country',
+        'specialties',
+        'years_in_business',
+        'is_public_profile',
+        'social_links',
+        'last_active_at',
     ];
 
     /**
@@ -74,7 +85,11 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'blocked_at' => 'datetime',
+            'last_active_at' => 'datetime',
             'password' => 'hashed',
+            'specialties' => 'array',
+            'social_links' => 'array',
+            'is_public_profile' => 'boolean',
         ];
     }
 
@@ -100,5 +115,56 @@ class User extends Authenticatable
     public function imports(): HasMany
     {
         return $this->hasMany(Import::class, 'user_id');
+    }
+
+    /**
+     * Get the dealer's extended profile.
+     */
+    public function dealerProfile(): HasOne
+    {
+        return $this->hasOne(DealerProfile::class);
+    }
+
+    /**
+     * Connections where this user sent the request.
+     */
+    public function sentConnections(): HasMany
+    {
+        return $this->hasMany(DealerConnection::class, 'sender_id');
+    }
+
+    /**
+     * Connections where this user received the request.
+     */
+    public function receivedConnections(): HasMany
+    {
+        return $this->hasMany(DealerConnection::class, 'receiver_id');
+    }
+
+    /**
+     * All accepted connections (both directions).
+     */
+    public function connections()
+    {
+        return DealerConnection::where('status', 'accepted')
+            ->where(fn($q) => $q->where('sender_id', $this->id)->orWhere('receiver_id', $this->id));
+    }
+
+    /**
+     * Chat rooms the user is a member of.
+     */
+    public function chatRooms(): BelongsToMany
+    {
+        return $this->belongsToMany(ChatRoom::class, 'chat_room_members')
+            ->withPivot(['role', 'last_read_at', 'joined_at'])
+            ->withTimestamps();
+    }
+
+    /**
+     * Feed posts created by this user.
+     */
+    public function feedPosts(): HasMany
+    {
+        return $this->hasMany(FeedPost::class);
     }
 }

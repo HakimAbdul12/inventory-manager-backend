@@ -43,6 +43,8 @@ return [
         'acquisition/*',
         'vehicles',
         'vehicles/*',
+        'dealer-hub',
+        'dealer-hub/*',
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

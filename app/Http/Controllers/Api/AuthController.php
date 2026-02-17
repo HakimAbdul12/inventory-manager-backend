@@ -59,6 +59,8 @@ class AuthController extends Controller
                     'dealer_code' => $user->dealer_code,
                     'company_name' => $user->company_name,
                     'role' => 'dealer',
+                    'avatar' => $user->avatar,
+                    'banner_image' => $user->banner_image,
                 ],
             ],
         ], 201);
@@ -105,7 +107,11 @@ class AuthController extends Controller
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
+                    'email' => $user->email,
                     'roles' => $user->getRoleNames(),
+                    'avatar' => $user->avatar,
+                    'banner_image' => $user->banner_image,
+                    'company_name' => $user->company_name,
                 ],
             ],
         ]);
@@ -155,6 +161,7 @@ class AuthController extends Controller
                     'dealer_code' => $user->dealer_code,
                     'company_name' => $user->company_name,
                     'phone' => $user->phone,
+                    'banner_image' => $user->banner_image,
                 ],
             ],
         ]);

@@ -11,6 +11,11 @@ use App\Http\Controllers\Api\VehicleController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\AINegotiatorController;
 use App\Http\Controllers\Api\AcquisitionController;
+use App\Http\Controllers\Api\DealerProfileController;
+use App\Http\Controllers\Api\DealerConnectionController;
+use App\Http\Controllers\Api\DealerChatController;
+use App\Http\Controllers\Api\ChatAttachmentController;
+use App\Http\Controllers\Api\DealerFeedController;
 
 /*
 |--------------------------------------------------------------------------
@@ -192,4 +197,46 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::get('/acquisition/recommendations', [AcquisitionController::class, 'index']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Dealer Hub Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('dealer-hub')->middleware('auth:sanctum')->group(function () {
+    // Profile
+    Route::get('/profile', [DealerProfileController::class, 'show']);
+    Route::put('/profile', [DealerProfileController::class, 'update']);
+    Route::post('/profile/avatar', [DealerProfileController::class, 'uploadAvatar']);
+    Route::post('/profile/banner', [DealerProfileController::class, 'uploadBanner']);
+    Route::get('/profile/{id}', [DealerProfileController::class, 'viewProfile']);
+    Route::get('/discover', [DealerProfileController::class, 'discover']);
+    Route::get('/discover/suggestions', [DealerProfileController::class, 'suggestions']);
+
+    // Connections
+    Route::get('/connections', [DealerConnectionController::class, 'index']);
+    Route::post('/connections', [DealerConnectionController::class, 'store']);
+    Route::put('/connections/{id}', [DealerConnectionController::class, 'update']);
+    Route::get('/connections/pending', [DealerConnectionController::class, 'pending']);
+    Route::get('/connections/mutual/{userId}', [DealerConnectionController::class, 'mutual']);
+
+    // Chat
+    Route::get('/chat/rooms', [DealerChatController::class, 'rooms']);
+    Route::post('/chat/rooms', [DealerChatController::class, 'createRoom']);
+    Route::get('/chat/rooms/{id}/messages', [DealerChatController::class, 'messages']);
+    Route::post('/chat/rooms/{id}/messages', [DealerChatController::class, 'sendMessage']);
+    Route::put('/chat/rooms/{id}/read', [DealerChatController::class, 'markRead']);
+    Route::post('/chat/rooms/{id}/messages/{messageId}/reactions', [DealerChatController::class, 'toggleReaction']);
+    Route::post('/chat/rooms/{id}/pin/{messageId}', [DealerChatController::class, 'togglePin']);
+    Route::post('/chat/rooms/{id}/attachments', [ChatAttachmentController::class, 'upload']);
+    Route::get('/chat/rooms/{id}/members', [DealerChatController::class, 'roomMembers']);
+
+    // Feed
+    Route::get('/feed', [DealerFeedController::class, 'index']);
+    Route::post('/feed', [DealerFeedController::class, 'store']);
+    Route::post('/feed/{id}/like', [DealerFeedController::class, 'toggleLike']);
+    Route::post('/feed/{id}/comment', [DealerFeedController::class, 'comment']);
+    Route::post('/feed/{id}/bookmark', [DealerFeedController::class, 'toggleBookmark']);
+    Route::get('/feed/{id}/comments', [DealerFeedController::class, 'comments']);
 });

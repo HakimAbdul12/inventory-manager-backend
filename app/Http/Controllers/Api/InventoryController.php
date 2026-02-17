@@ -172,9 +172,54 @@ class InventoryController extends Controller
         // For demo purposes, use a static user ID
         $userId = $request->user()?->id ?? 'demo_user';
 
-        $items = InventoryItem::where('user_id', $userId)
-            ->with(['category'])
-            ->withCount('images')
+        $query = InventoryItem::where('user_id', $userId)
+            ->with(['category']);
+
+        // Filter by Status
+        if ($request->has('status') && $request->status !== 'all') {
+            $query->where('status', $request->status);
+        }
+
+        // Filter by Make (JSON)
+        if ($request->filled('make')) {
+            $query->where('generated_data->make', 'like', '%' . $request->make . '%');
+        }
+
+        // Filter by Model (JSON)
+        if ($request->filled('model')) {
+            $query->where('generated_data->model', 'like', '%' . $request->model . '%');
+        }
+
+        // Filter by Year Range (JSON)
+        if ($request->filled('min_year')) {
+            $query->where('generated_data->year', '>=', (int)$request->min_year);
+        }
+        if ($request->filled('max_year')) {
+            $query->where('generated_data->year', '<=', (int)$request->max_year);
+        }
+
+        // Filter by Price Range (JSON)
+        if ($request->filled('min_price')) {
+            $query->where('generated_data->price', '>=', (int)$request->min_price);
+        }
+        if ($request->filled('max_price')) {
+            $query->where('generated_data->price', '<=', (int)$request->max_price);
+        }
+
+        // Filter by Mileage Range (JSON)
+        if ($request->filled('min_mileage')) {
+            $query->where('generated_data->mileage', '>=', (int)$request->min_mileage);
+        }
+        if ($request->filled('max_mileage')) {
+            $query->where('generated_data->mileage', '<=', (int)$request->max_mileage);
+        }
+
+        // Filter by Condition (JSON)
+        if ($request->filled('condition') && $request->condition !== 'all') {
+            $query->where('generated_data->condition', $request->condition);
+        }
+
+        $items = $query->withCount('images')
             ->orderByDesc('created_at')
             ->paginate(10);
 
