@@ -41,6 +41,7 @@ class User extends Authenticatable
         'is_public_profile',
         'social_links',
         'last_active_at',
+        'current_tenant_id',
     ];
 
     /**
@@ -166,5 +167,78 @@ class User extends Authenticatable
     public function feedPosts(): HasMany
     {
         return $this->hasMany(FeedPost::class);
+    }
+
+    // ─── Multi-Tenancy ──────────────────────────────────────
+
+    /**
+     * All tenants this user belongs to.
+     */
+    public function tenants(): BelongsToMany
+    {
+        return $this->belongsToMany(Tenant::class, 'tenant_user')
+            ->withPivot(['role', 'joined_at'])
+            ->withTimestamps();
+    }
+
+    /**
+     * The user's currently active tenant.
+     */
+    public function currentTenant(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Tenant::class, 'current_tenant_id');
+    }
+
+    /**
+     * Switch the user's active tenant.
+     */
+    public function switchTenant(string $tenantId): bool
+    {
+        // Verify user belongs to this tenant
+        if (!$this->tenants()->where('tenants.id', $tenantId)->exists()) {
+            return false;
+        }
+
+        $this->update(['current_tenant_id' => $tenantId]);
+        return true;
+    }
+
+    /**
+     * Get the user's role in a specific tenant.
+     */
+    public function roleInTenant(?Tenant $tenant = null): ?string
+    {
+        $tenant = $tenant ?? $this->currentTenant;
+        if (!$tenant) return null;
+
+        $membership = $this->tenants()->where('tenants.id', $tenant->id)->first();
+        return $membership?->pivot?->role;
+    }
+
+    /**
+     * Check if the user has at least the given role in a tenant.
+     */
+    public function hasRoleInTenant(string $requiredRole, ?Tenant $tenant = null): bool
+    {
+        $currentRole = $this->roleInTenant($tenant);
+        if (!$currentRole) return false;
+
+        return TenantUser::roleLevel($currentRole) >= TenantUser::roleLevel($requiredRole);
+    }
+
+    /**
+     * Get tenants formatted for API response.
+     */
+    public function getTenantsForApi(): array
+    {
+        return $this->tenants->map(fn(Tenant $tenant) => [
+            'id' => $tenant->id,
+            'name' => $tenant->name,
+            'slug' => $tenant->slug,
+            'logo' => $tenant->logo,
+            'banner_image' => $tenant->banner_image,
+            'role' => $tenant->pivot->role,
+            'member_count' => $tenant->users()->count(),
+        ])->toArray();
     }
 }

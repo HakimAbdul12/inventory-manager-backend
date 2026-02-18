@@ -16,6 +16,8 @@ use App\Http\Controllers\Api\DealerConnectionController;
 use App\Http\Controllers\Api\DealerChatController;
 use App\Http\Controllers\Api\ChatAttachmentController;
 use App\Http\Controllers\Api\DealerFeedController;
+use App\Http\Controllers\Api\TenantController;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -54,6 +56,25 @@ Route::prefix('auth')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
+| Tenant (Workspace) Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('tenants')->middleware(['auth:sanctum', 'tenant'])->group(function () {
+    Route::get('/', [TenantController::class, 'index']);
+    Route::post('/', [TenantController::class, 'store']);
+    Route::post('/switch', [TenantController::class, 'switchTenant']);
+    Route::put('/{id}', [TenantController::class, 'update']);
+    Route::delete('/{id}', [TenantController::class, 'destroy']);
+    Route::post('/{id}/upload-banner', [TenantController::class, 'uploadBanner']);
+    Route::post('/{id}/upload-logo', [TenantController::class, 'uploadLogo']);
+    Route::get('/{id}/members', [TenantController::class, 'members']);
+    Route::post('/{id}/members', [TenantController::class, 'addMember']);
+    Route::put('/{tenantId}/members/{userId}', [TenantController::class, 'updateMember']);
+    Route::delete('/{tenantId}/members/{userId}', [TenantController::class, 'removeMember']);
+});
+
+/*
+|--------------------------------------------------------------------------
 | Category Routes (Public)
 |--------------------------------------------------------------------------
 */
@@ -72,7 +93,7 @@ Route::prefix('categories')->middleware('auth:sanctum')->group(function () {
 | Inventory Routes (Protected)
 |--------------------------------------------------------------------------
 */
-Route::prefix('inventory')->middleware('auth:sanctum')->group(function () {
+Route::prefix('inventory')->middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/', [InventoryController::class, 'index']);
     Route::post('/start', [InventoryController::class, 'start']);
     Route::get('/processes', [InventoryController::class, 'processes']);

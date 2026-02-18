@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tenant;
+use App\Models\TenantUser;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -10,6 +12,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 
 class AuthController extends Controller
@@ -45,6 +48,17 @@ class AuthController extends Controller
 
         $user->assignRole('dealer');
 
+        // Create a default workspace for the user
+        $workspaceName = $request->company_name ?: $user->name . "'s Workspace";
+        $tenant = Tenant::create([
+            'name' => $workspaceName,
+            'slug' => Str::slug($workspaceName) . '-' . Str::lower(Str::random(6)),
+            'owner_id' => $user->id,
+            'settings' => [],
+        ]);
+        $tenant->addMember($user, TenantUser::ROLE_OWNER);
+        $user->update(['current_tenant_id' => $tenant->id]);
+
         // Log the user in after registration
         Auth::login($user);
 
@@ -61,6 +75,13 @@ class AuthController extends Controller
                     'role' => 'dealer',
                     'avatar' => $user->avatar,
                     'banner_image' => $user->banner_image,
+                    'tenants' => $user->getTenantsForApi(),
+                    'current_tenant' => [
+                        'id' => $tenant->id,
+                        'name' => $tenant->name,
+                        'slug' => $tenant->slug,
+                        'role' => TenantUser::ROLE_OWNER,
+                    ],
                 ],
             ],
         ], 201);
@@ -98,6 +119,7 @@ class AuthController extends Controller
         $request->session()->regenerate();
 
         $user = Auth::user();
+        $currentTenant = $user->currentTenant;
 
         return response()->json([
             'success' => true,
@@ -107,11 +129,18 @@ class AuthController extends Controller
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
-                    'email' => $user->email,
                     'roles' => $user->getRoleNames(),
                     'avatar' => $user->avatar,
                     'banner_image' => $user->banner_image,
                     'company_name' => $user->company_name,
+                    'tenants' => $user->getTenantsForApi(),
+                    'current_tenant' => $currentTenant ? [
+                        'id' => $currentTenant->id,
+                        'name' => $currentTenant->name,
+                        'slug' => $currentTenant->slug,
+                        'logo' => $currentTenant->logo,
+                        'role' => $user->roleInTenant($currentTenant),
+                    ] : null,
                 ],
             ],
         ]);
@@ -147,6 +176,8 @@ class AuthController extends Controller
             ], 401);
         }
 
+        $currentTenant = $user->currentTenant;
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -162,6 +193,14 @@ class AuthController extends Controller
                     'company_name' => $user->company_name,
                     'phone' => $user->phone,
                     'banner_image' => $user->banner_image,
+                    'tenants' => $user->getTenantsForApi(),
+                    'current_tenant' => $currentTenant ? [
+                        'id' => $currentTenant->id,
+                        'name' => $currentTenant->name,
+                        'slug' => $currentTenant->slug,
+                        'logo' => $currentTenant->logo,
+                        'role' => $user->roleInTenant($currentTenant),
+                    ] : null,
                 ],
             ],
         ]);

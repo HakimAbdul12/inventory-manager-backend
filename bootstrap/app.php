@@ -20,6 +20,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            'tenant' => \App\Http\Middleware\SetCurrentTenant::class,
+            'tenant.role' => \App\Http\Middleware\EnsureTenantRole::class,
         ]);
 
         // Enable Sanctum's stateful API middleware for SPA authentication
