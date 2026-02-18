@@ -169,11 +169,8 @@ class InventoryController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        // For demo purposes, use a static user ID
-        $userId = $request->user()?->id ?? 'demo_user';
-
-        $query = InventoryItem::where('user_id', $userId)
-            ->with(['category']);
+        // Use global tenant scope
+        $query = InventoryItem::with(['category']);
 
         // Filter by Status
         if ($request->has('status') && $request->status !== 'all') {
@@ -262,11 +259,8 @@ class InventoryController extends Controller
 
     public function externalIndex(Request $request): JsonResponse
     {
-        // For demo purposes, use a static user ID
-        $userId = $request->user()?->id ?? 'demo_user';
-
-        $items = InventoryItem::where('user_id', $userId)
-            ->with(['category'])
+        // Use global tenant scope
+        $items = InventoryItem::with(['category'])
             ->withCount('images')
             ->orderByDesc('created_at')
             ->paginate(10);
@@ -310,10 +304,8 @@ class InventoryController extends Controller
      */
     public function processes(Request $request): JsonResponse
     {
-        $userId = $request->user()?->id ?? 'demo_user';
-
-        $processes = InventoryProcess::where('user_id', $userId)
-            ->with(['category', 'steps'])
+        // Use global tenant scope
+        $processes = InventoryProcess::with(['category', 'steps'])
             ->orderByDesc('created_at')
             ->limit(20)
             ->get();
