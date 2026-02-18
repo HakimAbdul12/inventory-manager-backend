@@ -280,4 +280,66 @@ class AuthController extends Controller
             'message' => __($status),
         ], 400);
     }
+    /**
+     * Redirect to Google OAuth.
+     */
+    public function redirectToGoogle(): \Symfony\Component\HttpFoundation\RedirectResponse|\Illuminate\Http\RedirectResponse
+    {
+        return \Laravel\Socialite\Facades\Socialite::driver('google')->stateless()->redirect();
+    }
+
+    /**
+     * Handle Google OAuth callback.
+     */
+    public function handleGoogleCallback(): \Illuminate\Http\RedirectResponse
+    {
+        try {
+            /** @var \Laravel\Socialite\Two\User $googleUser */
+            $googleUser = \Laravel\Socialite\Facades\Socialite::driver('google')->stateless()->user();
+        } catch (\Exception $e) {
+            return redirect(config('app.frontend_url') . '/auth/login?error=google_auth_failed');
+        }
+
+        $user = User::where('google_id', $googleUser->getId())
+            ->orWhere('email', $googleUser->getEmail())
+            ->first();
+
+        if ($user) {
+            // Update existing user
+            if (!$user->google_id) {
+                $user->update(['google_id' => $googleUser->getId()]);
+            }
+            if (!$user->avatar && $googleUser->getAvatar()) {
+                $user->update(['avatar' => $googleUser->getAvatar()]);
+            }
+        } else {
+            // Register new user
+            $user = User::create([
+                'name' => $googleUser->getName(),
+                'email' => $googleUser->getEmail(),
+                'google_id' => $googleUser->getId(),
+                'avatar' => $googleUser->getAvatar(),
+                'password' => null, // Password is null for Google users
+                'email_verified_at' => now(),
+            ]);
+
+            $user->assignRole('owner');
+
+            // Create default workspace
+            $workspaceName = $user->name . "'s Workspace";
+            $tenant = Tenant::create([
+                'name' => $workspaceName,
+                'slug' => Str::slug($workspaceName) . '-' . Str::lower(Str::random(6)),
+                'owner_id' => $user->id,
+                'settings' => [],
+            ]);
+            $tenant->addMember($user, TenantUser::ROLE_OWNER);
+            $user->update(['current_tenant_id' => $tenant->id]);
+        }
+
+        Auth::login($user);
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return redirect(config('app.frontend_url') . '/auth/google/callback?token=' . $token);
+    }
 }
