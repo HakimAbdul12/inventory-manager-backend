@@ -172,49 +172,7 @@ class InventoryController extends Controller
         // Use global tenant scope
         $query = InventoryItem::with(['category']);
 
-        // Filter by Status
-        if ($request->has('status') && $request->status !== 'all') {
-            $query->where('status', $request->status);
-        }
-
-        // Filter by Make (JSON)
-        if ($request->filled('make')) {
-            $query->where('generated_data->make', 'like', '%' . $request->make . '%');
-        }
-
-        // Filter by Model (JSON)
-        if ($request->filled('model')) {
-            $query->where('generated_data->model', 'like', '%' . $request->model . '%');
-        }
-
-        // Filter by Year Range (JSON)
-        if ($request->filled('min_year')) {
-            $query->where('generated_data->year', '>=', (int)$request->min_year);
-        }
-        if ($request->filled('max_year')) {
-            $query->where('generated_data->year', '<=', (int)$request->max_year);
-        }
-
-        // Filter by Price Range (JSON)
-        if ($request->filled('min_price')) {
-            $query->where('generated_data->price', '>=', (int)$request->min_price);
-        }
-        if ($request->filled('max_price')) {
-            $query->where('generated_data->price', '<=', (int)$request->max_price);
-        }
-
-        // Filter by Mileage Range (JSON)
-        if ($request->filled('min_mileage')) {
-            $query->where('generated_data->mileage', '>=', (int)$request->min_mileage);
-        }
-        if ($request->filled('max_mileage')) {
-            $query->where('generated_data->mileage', '<=', (int)$request->max_mileage);
-        }
-
-        // Filter by Condition (JSON)
-        if ($request->filled('condition') && $request->condition !== 'all') {
-            $query->where('generated_data->condition', $request->condition);
-        }
+        $this->applyFilters($query, $request);
 
         $items = $query->withCount('images')
             ->orderByDesc('created_at')
@@ -324,7 +282,142 @@ class InventoryController extends Controller
     }
 
     /**
-     * Update inventory item details.
+     * Get all inventory items for spreadsheet view (non-paginated).
+     */
+    public function allItems(Request $request): JsonResponse
+    {
+        $query = InventoryItem::with(['category', 'images']);
+        $this->applyFilters($query, $request);
+
+        $items = $query->orderByDesc('created_at')->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $items->map(function ($item) {
+                $data = $item->generated_data ?? [];
+                return [
+                    'id' => $item->id,
+                    'title' => $item->title,
+                    'status' => $item->status,
+                    'category' => $item->category->name,
+                    'category_slug' => $item->category->slug,
+                    'images_string' => $item->images->pluck('path')->implode('|'),
+                    'createdAt' => $item->created_at->toIso8601String(),
+                    'generatedData' => $data,
+                    // Flattened common fields for convenience
+                    'make' => $data['make'] ?? null,
+                    'model' => $data['model'] ?? null,
+                    'year' => $data['year'] ?? null,
+                    'price' => $data['price'] ?? null,
+                    'condition' => $data['condition'] ?? null,
+                    'mileage' => $data['mileage'] ?? null,
+                ];
+            }),
+        ]);
+    }
+
+    /**
+     * Create a blank inventory item.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $category = Category::where('slug', 'cars')->first() ?? Category::first();
+
+        if (!$category) {
+            return response()->json(['success' => false, 'message' => 'No categories available'], 422);
+        }
+
+        $item = InventoryItem::create([
+            'category_id' => $category->id,
+            'status' => 'draft',
+            'generated_data' => [],
+            'metadata' => [],
+            'user_id' => $request->user()?->id ?? 'demo_user',
+            'tenant_id' => $request->header('X-Tenant-Id') ?? null, // Fallback for demo
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $item->id,
+                'title' => 'New Listing',
+                'status' => 'draft',
+                'category' => $category->name,
+                'category_slug' => $category->slug,
+                'images_string' => '',
+                'createdAt' => $item->created_at->toIso8601String(),
+                'generatedData' => [],
+            ]
+        ], 201);
+    }
+
+    /**
+     * Export inventory in various formats.
+     */
+    public function export(Request $request, string $format): \Symfony\Component\HttpFoundation\Response
+    {
+        $query = InventoryItem::with(['category', 'images']);
+        $this->applyFilters($query, $request);
+
+        $items = $query->get();
+        $data = $items->map(function ($item) {
+            $row = [
+                'ID' => $item->id,
+                'Title' => $item->title,
+                'Status' => $item->status,
+                'Category' => $item->category->name,
+                'Created At' => $item->created_at->toIso8601String(),
+                'Images' => $item->images->pluck('path')->implode('|'),
+            ];
+
+            // Merge generated data
+            foreach ($item->generated_data ?? [] as $key => $value) {
+                if (is_array($value)) $value = json_encode($value);
+                $row[ucfirst($key)] = $value;
+            }
+
+            return $row;
+        })->toArray();
+
+        if ($format === 'json') {
+            return response()->json($data);
+        }
+
+        if ($format === 'xml') {
+            $xml = new \SimpleXMLElement('<inventory/>');
+            foreach ($data as $item) {
+                $node = $xml->addChild('item');
+                foreach ($item as $key => $value) {
+                    $key = str_replace(' ', '_', $key);
+                    $node->addChild($key, htmlspecialchars((string)$value));
+                }
+            }
+            return response($xml->asXML(), 200, ['Content-Type' => 'application/xml']);
+        }
+
+        // Default to CSV
+        $filename = "inventory_export_" . date('Y-m-d') . ".csv";
+        $handle = fopen('php://memory', 'w');
+
+        if (!empty($data)) {
+            fputcsv($handle, array_keys($data[0]));
+            foreach ($data as $row) {
+                fputcsv($handle, $row);
+            }
+        }
+
+        rewind($handle);
+        $content = stream_get_contents($handle);
+        fclose($handle);
+
+        return response($content, 200, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ]);
+    }
+
+    /**
+     * Update inventory item details (supports images_string).
      */
     public function update(Request $request, string $id): JsonResponse
     {
@@ -332,6 +425,30 @@ class InventoryController extends Controller
 
         if (!$item) {
             return response()->json(['success' => false, 'message' => 'Item not found'], 404);
+        }
+
+        // Handle pipe-separated images
+        if ($request->has('images_string')) {
+            $urls = array_filter(explode('|', $request->input('images_string')));
+            $urls = array_map('trim', $urls);
+
+            // Delete images not in the new list
+            $item->images()->whereNotIn('path', $urls)->delete();
+
+            // Add new images
+            foreach ($urls as $url) {
+                if (!$item->images()->where('path', $url)->exists()) {
+                    InventoryImage::create([
+                        'inventory_item_id' => $item->id,
+                        'path' => $url,
+                        'is_primary' => $item->images()->count() === 0,
+                        'processing_status' => InventoryImage::STATUS_COMPLETED,
+                        'generated_by' => 'user_input',
+                        'alt' => $item->title . ' - Image',
+                        'sizes' => ['original' => $url],
+                    ]);
+                }
+            }
         }
 
         // Merge existing data with new data
@@ -342,10 +459,19 @@ class InventoryController extends Controller
 
         $item->update(['generated_data' => $mergedData]);
 
+        if ($request->has('status')) {
+            $item->update(['status' => $request->status]);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Item updated successfully',
-            'data' => $item->refresh(),
+            'data' => [
+                'id' => $item->id,
+                'generatedData' => $item->generated_data,
+                'status' => $item->status,
+                'images_string' => $item->images()->pluck('path')->implode('|'),
+            ],
         ]);
     }
 
@@ -455,6 +581,46 @@ class InventoryController extends Controller
     }
 
     /**
+     * Add an external image URL to an inventory item.
+     */
+    public function addExternalImage(Request $request, string $id): JsonResponse
+    {
+        $item = InventoryItem::find($id);
+
+        if (!$item) {
+            return response()->json(['success' => false, 'message' => 'Item not found'], 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'url' => 'required|url',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+        }
+
+        $url = $request->input('url');
+
+        // Create image record immediately with external URL
+        // detailed processing could be added later if we wanted to download it
+        $image = InventoryImage::create([
+            'inventory_item_id' => $item->id,
+            'path' => $url, // For external images, path is the URL
+            'is_primary' => $item->images()->count() === 0,
+            'processing_status' => InventoryImage::STATUS_COMPLETED, // It's already "there"
+            'generated_by' => 'external_url',
+            'alt' => $item->getTitleAttribute() . ' - External Image',
+            'sizes' => ['original' => $url],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'External image added successfully',
+            'data' => $image,
+        ]);
+    }
+
+    /**
      * Analyze inventory item quality and market price.
      */
     public function analyze(string $id): JsonResponse
@@ -485,6 +651,56 @@ class InventoryController extends Controller
                 'success' => false,
                 'message' => 'Analysis failed: ' . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Apply common filters to inventory query.
+     */
+    private function applyFilters($query, Request $request): void
+    {
+        // Filter by Status
+        if ($request->has('status') && $request->status !== 'all') {
+            $query->where('status', $request->status);
+        }
+
+        // Filter by Make (JSON)
+        if ($request->filled('make')) {
+            $query->where('generated_data->make', 'like', '%' . $request->make . '%');
+        }
+
+        // Filter by Model (JSON)
+        if ($request->filled('model')) {
+            $query->where('generated_data->model', 'like', '%' . $request->model . '%');
+        }
+
+        // Filter by Year Range (JSON)
+        if ($request->filled('min_year')) {
+            $query->where('generated_data->year', '>=', (int)$request->min_year);
+        }
+        if ($request->filled('max_year')) {
+            $query->where('generated_data->year', '<=', (int)$request->max_year);
+        }
+
+        // Filter by Price Range (JSON)
+        if ($request->filled('min_price')) {
+            $query->where('generated_data->price', '>=', (int)$request->min_price);
+        }
+        if ($request->filled('max_price')) {
+            $query->where('generated_data->price', '<=', (int)$request->max_price);
+        }
+
+        // Filter by Mileage Range (JSON)
+        if ($request->filled('min_mileage')) {
+            $query->where('generated_data->mileage', '>=', (int)$request->min_mileage);
+        }
+        if ($request->filled('max_mileage')) {
+            $query->where('generated_data->mileage', '<=', (int)$request->max_mileage);
+        }
+
+        // Filter by Condition (JSON)
+        if ($request->filled('condition') && $request->condition !== 'all') {
+            $query->where('generated_data->condition', $request->condition);
         }
     }
 }

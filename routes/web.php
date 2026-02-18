@@ -108,11 +108,16 @@ Route::prefix('inventory')->middleware(['auth:sanctum', 'tenant'])->group(functi
     Route::post('/blocked-ips', [\App\Http\Controllers\Api\BlockedIpController::class, 'store']);
     Route::delete('/blocked-ips/{ip_address}', [\App\Http\Controllers\Api\BlockedIpController::class, 'destroy']);
 
+    Route::get('/spreadsheet/all', [InventoryController::class, 'allItems']);
+    Route::post('/spreadsheet/create', [InventoryController::class, 'store']);
+    Route::get('/spreadsheet/export/{format}', [InventoryController::class, 'export']);
+
     Route::get('/{id}', [InventoryController::class, 'show']);
     Route::post('/{id}', [InventoryController::class, 'update']);
     Route::post('/{id}/images', [InventoryController::class, 'uploadImage']);
     Route::put('/{id}/images/{image}/primary', [InventoryController::class, 'setPrimaryImage']);
     Route::delete('/{id}/images/{image}', [InventoryController::class, 'deleteImage']);
+    Route::post('/{id}/images/external', [InventoryController::class, 'addExternalImage']);
     Route::post('/{id}/analyze', [InventoryController::class, 'analyze']);
 });
 
