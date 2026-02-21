@@ -16,9 +16,9 @@ class OpenRouterClient
 
     public function __construct()
     {
-        $this->baseUrl = config('openrouter.base_url');
-        $this->apiKey = config('openrouter.api_key');
-        $this->model = config('openrouter.model');
+        $this->baseUrl = config('openrouter.base_url', 'https://openrouter.ai/api/v1');
+        $this->apiKey = config('openrouter.api_key', env('OPENROUTER_API_KEY'));
+        $this->model = config('openrouter.model', 'liquid/lfm-2.5-1.2b-thinking:free');
         $this->timeout = config('openrouter.timeout', 60);
         $this->maxRetries = config('openrouter.max_retries', 3);
     }
@@ -28,15 +28,14 @@ class OpenRouterClient
      */
     protected function client(): PendingRequest
     {
-        return Http::baseUrl($this->baseUrl)
-            ->timeout($this->timeout)
+        return Http::timeout($this->timeout)
             ->withHeaders([
                 'Authorization' => "Bearer {$this->apiKey}",
                 'Content-Type' => 'application/json',
                 'HTTP-Referer' => config('app.url'),
                 'X-Title' => config('app.name'),
             ])
-            ->retry($this->maxRetries, 1000);
+            ->retry($this->maxRetries, 1000, null, false);
     }
 
     /**
@@ -56,16 +55,29 @@ class OpenRouterClient
             $payload['response_format'] = ['type' => 'json_object'];
         }
 
+        if (!empty($options['tools'])) {
+            $payload['tools'] = $options['tools'];
+            if (isset($options['tool_choice'])) {
+                $payload['tool_choice'] = $options['tool_choice'];
+            }
+        }
+
         Log::debug('OpenRouter request', ['model' => $payload['model'], 'messages_count' => count($messages)]);
 
-        $response = $this->client()->post('/chat/completions', $payload);
+        $url = rtrim($this->baseUrl, '/') . '/chat/completions';
+        $response = $this->client()->post($url, $payload);
 
         if (!$response->successful()) {
             Log::error('OpenRouter API error', [
                 'status' => $response->status(),
-                'body' => $response->body(),
+                'body' => $response->body()
             ]);
-            throw new \RuntimeException("OpenRouter API error: {$response->status()} - {$response->body()}");
+
+            return [
+                'content' => "I'm experiencing a bit of network trouble connecting to the brain (Error {$response->status()}). Please try again in an hour!",
+                'role' => 'assistant',
+                'tool_calls' => null,
+            ];
         }
 
         $data = $response->json();
@@ -74,8 +86,13 @@ class OpenRouterClient
             'usage' => $data['usage'] ?? null,
         ]);
 
+        $message = $data['choices'][0]['message'] ?? [];
+        $content = is_string($message) ? $message : ($message['content'] ?? '');
+        $toolCalls = is_array($message) ? ($message['tool_calls'] ?? null) : null;
+
         return [
-            'content' => $data['choices'][0]['message']['content'] ?? '',
+            'content' => $content,
+            'tool_calls' => $toolCalls,
             'usage' => $data['usage'] ?? [],
             'model' => $data['model'] ?? $payload['model'],
             'finish_reason' => $data['choices'][0]['finish_reason'] ?? null,

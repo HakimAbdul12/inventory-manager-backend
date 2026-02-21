@@ -45,6 +45,10 @@ return [
         'vehicles/*',
         'dealer-hub',
         'dealer-hub/*',
+        'chat-widget/*',
+        'chat-widget',
+        'widget/*',
+        'widget'
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

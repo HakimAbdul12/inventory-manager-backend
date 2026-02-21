@@ -268,3 +268,57 @@ Route::prefix('dealer-hub')->middleware('auth:sanctum')->group(function () {
     Route::post('/feed/{id}/bookmark', [DealerFeedController::class, 'toggleBookmark']);
     Route::get('/feed/{id}/comments', [DealerFeedController::class, 'comments']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Chat Widget - Public Endpoints (No Auth, API Key Based)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('widget')->group(function () {
+    Route::get('/config-by-tenant/{tenantId}', [\App\Http\Controllers\Api\WidgetConversationController::class, 'configByTenant']);
+    Route::get('/{apiKey}/config', [\App\Http\Controllers\Api\WidgetConversationController::class, 'config']);
+    Route::post('/{apiKey}/start', [\App\Http\Controllers\Api\WidgetConversationController::class, 'start']);
+    Route::post('/{apiKey}/message', [\App\Http\Controllers\Api\WidgetConversationController::class, 'message']);
+    Route::post('/{apiKey}/human', [\App\Http\Controllers\Api\WidgetConversationController::class, 'requestHuman']);
+    Route::post('/{apiKey}/lead', [\App\Http\Controllers\Api\WidgetConversationController::class, 'submitLead']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Telegram Webhook (No Auth, Secret Token Verification)
+|--------------------------------------------------------------------------
+*/
+Route::post('/webhooks/telegram', [\App\Http\Controllers\Api\TelegramWebhookController::class, 'handle']);
+
+/*
+|--------------------------------------------------------------------------
+| Chat Widget - Dashboard Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('chat-widget')->middleware(['auth:sanctum', 'tenant'])->group(function () {
+    // Configuration
+    Route::get('/config', [\App\Http\Controllers\Api\ChatWidgetConfigController::class, 'show']);
+    Route::put('/config', [\App\Http\Controllers\Api\ChatWidgetConfigController::class, 'update']);
+    Route::post('/config/regenerate-key', [\App\Http\Controllers\Api\ChatWidgetConfigController::class, 'regenerateKey']);
+    Route::get('/config/embed-code', [\App\Http\Controllers\Api\ChatWidgetConfigController::class, 'embedCode']);
+
+    // Knowledge Base
+    Route::get('/knowledge', [\App\Http\Controllers\Api\KnowledgeBaseController::class, 'index']);
+    Route::post('/knowledge', [\App\Http\Controllers\Api\KnowledgeBaseController::class, 'store']);
+    Route::put('/knowledge/{id}', [\App\Http\Controllers\Api\KnowledgeBaseController::class, 'update']);
+    Route::delete('/knowledge/{id}', [\App\Http\Controllers\Api\KnowledgeBaseController::class, 'destroy']);
+    Route::post('/knowledge/{id}/reindex', [\App\Http\Controllers\Api\KnowledgeBaseController::class, 'reindex']);
+
+    // Telegram
+    Route::get('/telegram', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'show']);
+    Route::post('/telegram/connect', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'connect']);
+    Route::post('/telegram/test', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'test']);
+    Route::delete('/telegram', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'disconnect']);
+    Route::put('/telegram/settings', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'updateSettings']);
+
+    // Analytics & Conversations
+    Route::get('/analytics', [\App\Http\Controllers\Api\ChatAnalyticsController::class, 'summary']);
+    Route::get('/conversations', [\App\Http\Controllers\Api\ChatAnalyticsController::class, 'conversations']);
+    Route::get('/conversations/{id}', [\App\Http\Controllers\Api\ChatAnalyticsController::class, 'showConversation']);
+    Route::get('/leads', [\App\Http\Controllers\Api\ChatAnalyticsController::class, 'leads']);
+});
