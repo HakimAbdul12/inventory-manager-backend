@@ -655,6 +655,20 @@ class InventoryController extends Controller
     }
 
     /**
+     * Count inventory items matching filters (for push job preview).
+     */
+    public function count(Request $request): JsonResponse
+    {
+        $query = InventoryItem::query();
+        $this->applyFilters($query, $request);
+
+        return response()->json([
+            'success' => true,
+            'data' => ['count' => $query->count()],
+        ]);
+    }
+
+    /**
      * Apply common filters to inventory query.
      */
     private function applyFilters($query, Request $request): void

@@ -48,7 +48,9 @@ return [
         'chat-widget/*',
         'chat-widget',
         'widget/*',
-        'widget'
+        'widget',
+        'sftp/*',
+        'sftp'
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

@@ -97,6 +97,7 @@ Route::prefix('categories')->middleware('auth:sanctum')->group(function () {
 */
 Route::prefix('inventory')->middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/', [InventoryController::class, 'index']);
+    Route::get('/count', [InventoryController::class, 'count']);
     Route::post('/start', [InventoryController::class, 'start']);
     Route::get('/processes', [InventoryController::class, 'processes']);
     Route::get('/{processId}/status', [InventoryController::class, 'status']);
@@ -321,4 +322,29 @@ Route::prefix('chat-widget')->middleware(['auth:sanctum', 'tenant'])->group(func
     Route::get('/conversations', [\App\Http\Controllers\Api\ChatAnalyticsController::class, 'conversations']);
     Route::get('/conversations/{id}', [\App\Http\Controllers\Api\ChatAnalyticsController::class, 'showConversation']);
     Route::get('/leads', [\App\Http\Controllers\Api\ChatAnalyticsController::class, 'leads']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| SFTP Distribution Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('sftp')->middleware(['auth:sanctum', 'tenant'])->group(function () {
+    // SFTP Connections
+    Route::get('/connections', [\App\Http\Controllers\Api\SftpConnectionController::class, 'index']);
+    Route::post('/connections', [\App\Http\Controllers\Api\SftpConnectionController::class, 'store']);
+    Route::put('/connections/{id}', [\App\Http\Controllers\Api\SftpConnectionController::class, 'update']);
+    Route::delete('/connections/{id}', [\App\Http\Controllers\Api\SftpConnectionController::class, 'destroy']);
+    Route::post('/connections/{id}/test', [\App\Http\Controllers\Api\SftpConnectionController::class, 'test']);
+
+    // Push Jobs
+    Route::get('/push-jobs', [\App\Http\Controllers\Api\InventoryPushJobController::class, 'index']);
+    Route::post('/push-jobs', [\App\Http\Controllers\Api\InventoryPushJobController::class, 'store']);
+    Route::put('/push-jobs/{id}', [\App\Http\Controllers\Api\InventoryPushJobController::class, 'update']);
+    Route::delete('/push-jobs/{id}', [\App\Http\Controllers\Api\InventoryPushJobController::class, 'destroy']);
+    Route::post('/push-jobs/{id}/execute', [\App\Http\Controllers\Api\InventoryPushJobController::class, 'execute']);
+
+    // Push History
+    Route::get('/history', [\App\Http\Controllers\Api\InventoryPushHistoryController::class, 'index']);
+    Route::get('/history/{id}', [\App\Http\Controllers\Api\InventoryPushHistoryController::class, 'show']);
 });
