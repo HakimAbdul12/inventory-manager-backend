@@ -92,3 +92,27 @@ Broadcast::channel('chat.{roomId}', function ($user, $roomId) {
 Broadcast::channel('user.{id}.notifications', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
+
+/*
+|--------------------------------------------------------------------------
+| Chat Widget — Tenant Handoff Channel (Private)
+|--------------------------------------------------------------------------
+|
+| Dashboard users subscribe to receive instant alerts when visitors
+| request a human agent. Only authenticated users of the same tenant
+| can subscribe.
+|
+*/
+Broadcast::channel('tenant.{tenantId}.handoffs', function ($user, $tenantId) {
+    \Illuminate\Support\Facades\Log::info('Authorizing tenant handoffs channel', [
+        'user_id' => $user->id,
+        'user_tenant_id' => $user->current_tenant_id,
+        'requested_tenant_id' => $tenantId,
+        'match' => $user->current_tenant_id == $tenantId
+    ]);
+    return $user && (string)$user->current_tenant_id === (string)$tenantId;
+});
+
+// Note: chat-conversation.{id} uses a public Channel (not PrivateChannel)
+// so that the unauthenticated widget can subscribe without Sanctum auth.
+// Security is enforced by session_token checks in the event payload.

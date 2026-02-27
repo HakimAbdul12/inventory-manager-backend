@@ -2,6 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\NewHandoffRequest;
+use App\Events\WidgetMessageSent;
+use App\Events\WidgetStateChanged;
+
 use App\Models\ChatAnalytic;
 use App\Models\ChatConversation;
 use App\Models\ChatWidgetMessage;
@@ -57,6 +61,10 @@ class WidgetConversationController extends Controller
      */
     public function configByTenant(string $tenantId): JsonResponse
     {
+        if (!\Illuminate\Support\Str::isUuid($tenantId)) {
+            return response()->json(['error' => 'Invalid tenant ID format'], 400);
+        }
+
         $config = WorkspaceChatConfig::withoutGlobalScope('tenant')
             ->where('tenant_id', $tenantId)
             ->where('is_active', true)
@@ -234,6 +242,83 @@ class WidgetConversationController extends Controller
         ]);
     }
 
+    /**
+     * Get the current conversation state (for widget polling during handoff).
+     */
+    public function status(Request $request, string $apiKey): JsonResponse
+    {
+        $config = $this->resolveConfig($apiKey);
+        if (!$config) {
+            return response()->json(['error' => 'Widget not found'], 404);
+        }
+
+        $conversation = ChatConversation::withoutGlobalScope('tenant')
+            ->where('tenant_id', $config->tenant_id)
+            ->where('session_token', $request->query('session_token'))
+            ->first();
+
+        if (!$conversation) {
+            return response()->json(['error' => 'Session not found'], 404);
+        }
+
+        $agentName = null;
+        if ($conversation->isHumanMode() && $conversation->telegram_chat_id) {
+            $telegramConn = \App\Models\TelegramConnection::where('telegram_chat_id', $conversation->telegram_chat_id)->first();
+            $agentName = $telegramConn?->telegram_username ?? 'Support Agent';
+        }
+
+        return response()->json([
+            'state' => $conversation->state,
+            'agent_name' => $agentName,
+            'conversation_id' => $conversation->id,
+        ]);
+    }
+
+    /**
+     * Get messages for a conversation (for widget polling during human handoff).
+     */
+    public function messages(Request $request, string $apiKey): JsonResponse
+    {
+        $config = $this->resolveConfig($apiKey);
+        if (!$config) {
+            return response()->json(['error' => 'Widget not found'], 404);
+        }
+
+        $conversation = ChatConversation::withoutGlobalScope('tenant')
+            ->where('tenant_id', $config->tenant_id)
+            ->where('session_token', $request->query('session_token'))
+            ->first();
+
+        if (!$conversation) {
+            return response()->json(['error' => 'Session not found'], 404);
+        }
+
+        $query = $conversation->messages()->orderBy('created_at');
+
+        // Only return messages after the given ID (incremental polling)
+        $afterId = $request->query('after');
+        if ($afterId) {
+            $afterMsg = ChatWidgetMessage::find($afterId);
+            if ($afterMsg) {
+                $query->where('created_at', '>', $afterMsg->created_at);
+            }
+        }
+
+        $messages = $query->get()->map(fn($m) => [
+            'id' => $m->id,
+            'content' => $m->content,
+            'sender_type' => $m->sender_type,
+            'message_type' => $m->message_type,
+            'metadata' => $m->metadata,
+            'created_at' => $m->created_at->toISOString(),
+        ]);
+
+        return response()->json([
+            'messages' => $messages,
+            'state' => $conversation->state,
+        ]);
+    }
+
     // ─── Private Helpers ────────────────────────────────────
 
     protected function resolveConfig(string $apiKey): ?WorkspaceChatConfig
@@ -250,13 +335,22 @@ class WidgetConversationController extends Controller
         string $message
     ): JsonResponse {
         // Store visitor message
-        $conversation->messages()->create([
+        $msg = $conversation->messages()->create([
             'sender_type' => ChatWidgetMessage::SENDER_VISITOR,
             'content' => $message,
             'message_type' => ChatWidgetMessage::TYPE_TEXT,
         ]);
 
         $conversation->touchActivity();
+
+        // Broadcast visitor message to dashboard in real-time
+        broadcast(new WidgetMessageSent($conversation->id, [
+            'id' => $msg->id,
+            'content' => $message,
+            'sender_type' => 'visitor',
+            'message_type' => 'text',
+            'created_at' => $msg->created_at->toISOString(),
+        ]));
 
         // Forward to Telegram
         $telegramConnection = $config->tenant
@@ -271,9 +365,11 @@ class WidgetConversationController extends Controller
 
         return response()->json([
             'message' => [
+                'id' => $msg->id,
                 'content' => $message,
                 'sender_type' => 'visitor',
                 'message_type' => 'text',
+                'created_at' => $msg->created_at->toISOString(),
             ],
             'state' => 'human',
             'info' => 'Message sent to agent.',
@@ -284,31 +380,29 @@ class WidgetConversationController extends Controller
         ChatConversation $conversation,
         WorkspaceChatConfig $config
     ): array {
-        $telegramConnection = \App\Models\TelegramConnection::withoutGlobalScope('tenant')
-            ->where('tenant_id', $config->tenant_id)
-            ->where('is_active', true)
-            ->first();
+        $previousState = $conversation->state;
 
-        if (!$telegramConnection || !$telegramConnection->isReady()) {
-            // No Telegram connection — AI informs customer
-            $msg = $conversation->messages()->create([
-                'sender_type' => ChatWidgetMessage::SENDER_AI,
-                'content' => "I'm sorry, our team is currently unavailable. Could you please leave your contact details and we'll get back to you as soon as possible?",
-                'message_type' => ChatWidgetMessage::TYPE_LEAD_FORM,
-            ]);
-
-            return [
-                'message' => $msg,
-                'state' => 'ai',
-                'show_lead_form' => true,
-            ];
-        }
-
-        // Send notification to Telegram
-        $this->telegramService->notifyHandoff($telegramConnection, $conversation);
-
-        // Transition state
+        // Always transition to human state — the dashboard queue will pick it up
         $conversation->transitionTo(ChatConversation::STATE_HUMAN);
+
+        // Try to notify via Telegram if configured (non-blocking)
+        $telegramNotified = false;
+        try {
+            $telegramConnection = \App\Models\TelegramConnection::withoutGlobalScope('tenant')
+                ->where('tenant_id', $config->tenant_id)
+                ->where('is_active', true)
+                ->first();
+
+            if ($telegramConnection && $telegramConnection->isReady()) {
+                $this->telegramService->notifyHandoff($telegramConnection, $conversation);
+                $telegramNotified = true;
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::warning('Telegram notification failed during handoff', [
+                'conversation_id' => $conversation->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         $msg = $conversation->messages()->create([
             'sender_type' => ChatWidgetMessage::SENDER_AI,
@@ -316,9 +410,38 @@ class WidgetConversationController extends Controller
             'message_type' => ChatWidgetMessage::TYPE_SYSTEM,
         ]);
 
+        // Broadcast to dashboard in real-time
+        $this->broadcastHandoff($conversation, $previousState);
+
         return [
             'message' => $msg,
             'state' => 'human',
+            'telegram_notified' => $telegramNotified,
         ];
+    }
+
+    /**
+     * Broadcast handoff events for real-time dashboard updates.
+     */
+    protected function broadcastHandoff(ChatConversation $conversation, string $previousState): void
+    {
+        // State change (widget + dashboard)
+        broadcast(new WidgetStateChanged(
+            $conversation->id,
+            $previousState,
+            ChatConversation::STATE_HUMAN,
+        ));
+
+        // Handoff alert (dashboard queue page)
+        broadcast(new NewHandoffRequest($conversation->tenant_id, [
+            'id' => $conversation->id,
+            'visitor_name' => $conversation->visitor_name ?: 'Anonymous',
+            'visitor_email' => $conversation->visitor_email,
+            'visitor_phone' => $conversation->visitor_phone,
+            'state' => $conversation->state,
+            'handoff_requested_at' => $conversation->last_activity_at?->toISOString(),
+            'created_at' => $conversation->created_at->toISOString(),
+            'message_count' => $conversation->messages()->count(),
+        ]));
     }
 }

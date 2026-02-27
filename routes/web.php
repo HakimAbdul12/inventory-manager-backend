@@ -280,8 +280,12 @@ Route::prefix('widget')->group(function () {
     Route::get('/{apiKey}/config', [\App\Http\Controllers\Api\WidgetConversationController::class, 'config']);
     Route::post('/{apiKey}/start', [\App\Http\Controllers\Api\WidgetConversationController::class, 'start']);
     Route::post('/{apiKey}/message', [\App\Http\Controllers\Api\WidgetConversationController::class, 'message']);
+    Route::post('/{apiKey}/request-human', [\App\Http\Controllers\Api\WidgetConversationController::class, 'requestHuman']);
     Route::post('/{apiKey}/human', [\App\Http\Controllers\Api\WidgetConversationController::class, 'requestHuman']);
+    Route::post('/{apiKey}/submit-lead', [\App\Http\Controllers\Api\WidgetConversationController::class, 'submitLead']);
     Route::post('/{apiKey}/lead', [\App\Http\Controllers\Api\WidgetConversationController::class, 'submitLead']);
+    Route::get('/{apiKey}/status', [\App\Http\Controllers\Api\WidgetConversationController::class, 'status']);
+    Route::get('/{apiKey}/messages', [\App\Http\Controllers\Api\WidgetConversationController::class, 'messages']);
 });
 
 /*
@@ -322,6 +326,14 @@ Route::prefix('chat-widget')->middleware(['auth:sanctum', 'tenant'])->group(func
     Route::get('/conversations', [\App\Http\Controllers\Api\ChatAnalyticsController::class, 'conversations']);
     Route::get('/conversations/{id}', [\App\Http\Controllers\Api\ChatAnalyticsController::class, 'showConversation']);
     Route::get('/leads', [\App\Http\Controllers\Api\ChatAnalyticsController::class, 'leads']);
+
+    // Live Queue & Reply (Dealer Dashboard)
+    Route::get('/queue', [\App\Http\Controllers\Api\ChatConversationController::class, 'index']);
+    Route::get('/queue/pending', [\App\Http\Controllers\Api\ChatConversationController::class, 'pendingHandoffs']);
+    Route::get('/queue/{id}', [\App\Http\Controllers\Api\ChatConversationController::class, 'show']);
+    Route::post('/queue/{id}/reply', [\App\Http\Controllers\Api\ChatConversationController::class, 'reply']);
+    Route::post('/queue/{id}/end', [\App\Http\Controllers\Api\ChatConversationController::class, 'endAndHandToAI']);
+    Route::post('/queue/{id}/close', [\App\Http\Controllers\Api\ChatConversationController::class, 'close']);
 });
 
 /*
