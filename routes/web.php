@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
@@ -9,6 +8,8 @@ use App\Http\Controllers\Api\InventoryController;
 
 use App\Http\Controllers\Api\VehicleController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\Dashboard\TenantEmailSettingController;
+use App\Http\Controllers\Api\Dashboard\LeadController;
 use App\Http\Controllers\Api\AINegotiatorController;
 use App\Http\Controllers\Api\AcquisitionController;
 use App\Http\Controllers\Api\DealerProfileController;
@@ -326,6 +327,12 @@ Route::prefix('chat-widget')->middleware(['auth:sanctum', 'tenant'])->group(func
     Route::get('/conversations', [\App\Http\Controllers\Api\ChatAnalyticsController::class, 'conversations']);
     Route::get('/conversations/{id}', [\App\Http\Controllers\Api\ChatAnalyticsController::class, 'showConversation']);
     Route::get('/leads', [\App\Http\Controllers\Api\ChatAnalyticsController::class, 'leads']);
+
+    // Email Integrations & Lead Management
+    Route::get('/settings/email', [TenantEmailSettingController::class, 'show']);
+    Route::post('/settings/email', [TenantEmailSettingController::class, 'update']);
+    Route::patch('/leads/{id}/status', [LeadController::class, 'updateStatus']);
+    Route::post('/leads/fetch-emails', [LeadController::class, 'fetchEmails']);
 
     // Live Queue & Reply (Dealer Dashboard)
     Route::get('/queue', [\App\Http\Controllers\Api\ChatConversationController::class, 'index']);

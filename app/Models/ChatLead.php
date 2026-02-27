@@ -25,15 +25,23 @@ class ChatLead extends Model
         'intent',
         'interested_vehicle_id',
         'notes',
+        'provider_name',
+        'vehicle_details',
+        'source',
+        'status',
+        'external_reference_id',
         'created_at',
     ];
 
     protected $casts = [
         'created_at' => 'datetime',
+        'vehicle_details' => 'array',
     ];
 
     protected $attributes = [
         'intent' => 'general',
+        'source' => 'chat',
+        'status' => 'new',
     ];
 
     public const INTENT_TEST_DRIVE = 'test_drive';
@@ -46,6 +54,26 @@ class ChatLead extends Model
         self::INTENT_FINANCING,
         self::INTENT_CONTACT_SALES,
         self::INTENT_GENERAL,
+    ];
+
+    public const SOURCE_CHAT = 'chat';
+    public const SOURCE_EMAIL = 'email';
+
+    public const STATUS_NEW = 'new';
+    public const STATUS_CONTACTED = 'contacted';
+    public const STATUS_CLOSED_WON = 'closed_won';
+    public const STATUS_CLOSED_LOST = 'closed_lost';
+
+    public const SOURCES = [
+        self::SOURCE_CHAT,
+        self::SOURCE_EMAIL,
+    ];
+
+    public const STATUSES = [
+        self::STATUS_NEW,
+        self::STATUS_CONTACTED,
+        self::STATUS_CLOSED_WON,
+        self::STATUS_CLOSED_LOST,
     ];
 
     protected static function booted(): void

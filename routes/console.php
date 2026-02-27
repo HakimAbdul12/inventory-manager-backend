@@ -11,3 +11,6 @@ Artisan::command('inspire', function () {
 // ── SFTP Distribution Scheduler ─────────────────────────
 Schedule::command('sftp:dispatch-scheduled-pushes --time=00:00')->dailyAt('00:00');
 Schedule::command('sftp:dispatch-scheduled-pushes --time=12:00')->dailyAt('12:00');
+
+// ── Email Leads Scheduler ───────────────────────────────
+Schedule::command('leads:fetch-emails')->everyThirtyMinutes();

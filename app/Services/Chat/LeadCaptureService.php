@@ -25,6 +25,7 @@ class LeadCaptureService
                 'intent' => $data['intent'] ?? ChatLead::INTENT_GENERAL,
                 'interested_vehicle_id' => $data['vehicle_id'] ?? null,
                 'notes' => $data['notes'] ?? null,
+                'provider_name' => 'AI Chat Agent',
             ]
         );
 
