@@ -570,6 +570,63 @@ Be strict but fair. If a price seems like a placeholder (e.g. $1 or $999999), pe
 SYSTEM;
     }
 
+    /**
+     * Generate a compelling HTML description for an inventory item.
+     */
+    public function generateDescription(\App\Models\InventoryItem $item): string
+    {
+        $data = $item->generated_data ?? [];
+        $category = $item->category;
+
+        $prompt = $this->buildDescriptionPrompt($category, $data);
+
+        Log::info('Generating inventory description', [
+            'item_id' => $item->id,
+            'category' => $category->slug,
+        ]);
+
+        $result = $this->client->chatCompletion([
+            [
+                'role' => 'system',
+                'content' => 'You are a professional automotive copywriter. Generate compelling, SEO-friendly HTML descriptions for vehicle listings. Use ONLY semantic HTML tags like <p>, <strong>, <ul>, <li>, <h3>. Do NOT use <html>, <body>, or <head> tags. Return ONLY the HTML content, no explanation.'
+            ],
+            [
+                'role' => 'user',
+                'content' => $prompt
+            ]
+        ], [
+            'temperature' => 0.8,
+            'max_tokens' => 1500,
+        ]);
+
+        return $result['content'];
+    }
+
+    /**
+     * Build the description generation prompt.
+     */
+    protected function buildDescriptionPrompt(Category $category, array $data): string
+    {
+        $details = $this->formatUserInputs($data);
+
+        return <<<PROMPT
+Generate a high-end, professional sales description for a {$category->name} listing with the following details:
+
+{$details}
+
+## REQUIREMENTS:
+1. Format correctly using HTML (paragraphs, bullet points for features, bold for emphasis).
+2. Start with an engaging hook.
+3. Highlight key specifications and condition.
+4. Include a "Why Choose This Vehicle" section.
+5. Wrap it up with a subtle call to action.
+6. Language: Professional, trustworthy, and persuasive.
+7. Tone: Premium and descriptive.
+
+Return ONLY the HTML body content.
+PROMPT;
+    }
+
     protected function extractJson(string $content): ?array
     {
         if (preg_match('/```(?:json)?\s*([\s\S]*?)\s*```/', $content, $matches)) {

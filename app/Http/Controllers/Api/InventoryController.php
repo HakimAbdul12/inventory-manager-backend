@@ -655,6 +655,34 @@ class InventoryController extends Controller
     }
 
     /**
+     * Generate an AI description for the inventory item.
+     */
+    public function generateDescription(string $id): JsonResponse
+    {
+        $item = InventoryItem::find($id);
+
+        if (!$item) {
+            return response()->json(['success' => false, 'message' => 'Inventory item not found'], 404);
+        }
+
+        try {
+            $description = $this->aiService->generateDescription($item);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'description' => $description,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Description generation failed: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Count inventory items matching filters (for push job preview).
      */
     public function count(Request $request): JsonResponse
