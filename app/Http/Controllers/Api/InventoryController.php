@@ -744,5 +744,25 @@ class InventoryController extends Controller
         if ($request->filled('condition') && $request->condition !== 'all') {
             $query->where('generated_data->condition', $request->condition);
         }
+
+        // Filter by One-time Payment Available (JSON)
+        if ($request->has('isOneTimePaymentAvailable')) {
+            $query->where('generated_data->isOneTimePaymentAvailable', filter_var($request->isOneTimePaymentAvailable, FILTER_VALIDATE_BOOLEAN));
+        }
+
+        // Filter by Negotiable (JSON)
+        if ($request->has('isNegotiable')) {
+            $query->where('generated_data->isNegotiable', filter_var($request->isNegotiable, FILTER_VALIDATE_BOOLEAN));
+        }
+
+        // Filter by Lease Available (JSON)
+        if ($request->has('isLeaseAvailable')) {
+            $query->where('generated_data->isLeaseAvailable', filter_var($request->isLeaseAvailable, FILTER_VALIDATE_BOOLEAN));
+        }
+
+        // Filter by Financing Available (JSON)
+        if ($request->has('isFinancingAvailable')) {
+            $query->where('generated_data->isFinancingAvailable', filter_var($request->isFinancingAvailable, FILTER_VALIDATE_BOOLEAN));
+        }
     }
 }
