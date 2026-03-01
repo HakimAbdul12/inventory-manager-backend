@@ -167,15 +167,27 @@ MSG;
         }
 
         if ($action === 'accept') {
+            $previousState = $conversation->state;
             $conversation->switchToHuman($chatId);
             $this->sendMessage($chatId, "✅ You're now connected. Simply type your messages to reply.");
-            return ['action' => 'accepted', 'conversation_id' => $conversationId];
+            return [
+                'action' => 'accepted',
+                'conversation_id' => $conversationId,
+                'previous_state' => $previousState,
+                'tenant_id' => $conversation->tenant_id,
+            ];
         }
 
         if ($action === 'close') {
+            $previousState = $conversation->state;
             $conversation->close();
             $this->sendMessage($chatId, '✅ Conversation closed.');
-            return ['action' => 'closed', 'conversation_id' => $conversationId];
+            return [
+                'action' => 'closed',
+                'conversation_id' => $conversationId,
+                'previous_state' => $previousState,
+                'tenant_id' => $conversation->tenant_id,
+            ];
         }
 
         return null;
@@ -196,6 +208,25 @@ MSG;
             return $this->handleCloseCommand($chatId, $text);
         }
 
+        // Check if message is a connection code (e.g. 6 chars, uppercase)
+        if (strlen($text) === 6 && strtoupper($text) === $text && ctype_alnum($text)) {
+            $connection = TelegramConnection::withoutGlobalScope('tenant')
+                ->where('connection_code', $text)
+                ->first();
+
+            if ($connection && $connection->hasValidCode()) {
+                $connection->update([
+                    'telegram_chat_id' => $chatId,
+                    'connection_code' => null, // One-time use
+                    'verified_at' => now(),
+                    'is_active' => true,
+                ]);
+
+                $this->sendMessage($chatId, "✅ <b>Connection Successful!</b>\n\nYour Telegram account is now linked to your dashboard. You will receive notifications here when a customer requests a human agent.");
+                return ['action' => 'connection_linked'];
+            }
+        }
+
         // Find active conversation linked to this Telegram chat
         $conversation = ChatConversation::withoutGlobalScope('tenant')
             ->where('telegram_chat_id', $chatId)
@@ -209,7 +240,7 @@ MSG;
         }
 
         // Store the dealer's message in the conversation
-        $conversation->messages()->create([
+        $msg = $conversation->messages()->create([
             'sender_type' => ChatWidgetMessage::SENDER_HUMAN,
             'content' => $text,
             'message_type' => ChatWidgetMessage::TYPE_TEXT,
@@ -220,7 +251,13 @@ MSG;
         return [
             'action' => 'message_relayed',
             'conversation_id' => $conversation->id,
-            'content' => $text,
+            'message' => [
+                'id' => $msg->id,
+                'content' => $msg->content,
+                'sender_type' => $msg->sender_type,
+                'message_type' => $msg->message_type,
+                'created_at' => $msg->created_at->toISOString(),
+            ],
         ];
     }
 
@@ -236,10 +273,16 @@ MSG;
             ->first();
 
         if ($conversation) {
+            $previousState = $conversation->state;
             $conversation->close();
             $this->sendMessage($chatId, '✅ Conversation closed. The AI will resume for new messages.');
 
-            return ['action' => 'closed', 'conversation_id' => $conversation->id];
+            return [
+                'action' => 'closed',
+                'conversation_id' => $conversation->id,
+                'previous_state' => $previousState,
+                'tenant_id' => $conversation->tenant_id,
+            ];
         }
 
         $this->sendMessage($chatId, '⚠️ No active conversation to close.');

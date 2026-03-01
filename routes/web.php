@@ -320,8 +320,9 @@ Route::prefix('chat-widget')->middleware(['auth:sanctum', 'tenant'])->group(func
     Route::get('/telegram', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'show']);
     Route::post('/telegram/connect', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'connect']);
     Route::post('/telegram/test', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'test']);
-    Route::delete('/telegram', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'disconnect']);
+    Route::post('/telegram/disconnect', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'disconnect']);
     Route::put('/telegram/settings', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'updateSettings']);
+    Route::get('/telegram/webhook-info', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'webhookInfo']);
 
     // Analytics & Conversations
     Route::get('/analytics', [\App\Http\Controllers\Api\ChatAnalyticsController::class, 'summary']);

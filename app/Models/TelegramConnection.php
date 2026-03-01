@@ -20,11 +20,14 @@ class TelegramConnection extends Model
         'auto_away_message',
         'agent_sla_minutes',
         'verified_at',
+        'connection_code',
+        'connection_code_expires_at',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'verified_at' => 'datetime',
+        'connection_code_expires_at' => 'datetime',
     ];
 
     protected $attributes = [
@@ -58,5 +61,15 @@ class TelegramConnection extends Model
         ]);
 
         return $this;
+    }
+
+    /**
+     * Check if the connection code is still valid.
+     */
+    public function hasValidCode(): bool
+    {
+        return !empty($this->connection_code)
+            && $this->connection_code_expires_at
+            && $this->connection_code_expires_at->isFuture();
     }
 }

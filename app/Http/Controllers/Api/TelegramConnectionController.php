@@ -7,6 +7,7 @@ use App\Services\Chat\TelegramBotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Str;
 
 class TelegramConnectionController extends Controller
 {
@@ -29,38 +30,37 @@ class TelegramConnectionController extends Controller
             ->first();
 
         return response()->json([
-            'connection' => $connection,
+            'data' => $connection,
             'is_connected' => $connection?->isReady() ?? false,
             'bot_username' => config('services.telegram.bot_username', null),
         ]);
     }
 
     /**
-     * Connect Telegram by setting the chat ID.
+     * Start the Telegram connection process by generating a connection code.
+     * The user will send this code to the bot to link their chat.
      */
     public function connect(Request $request): JsonResponse
     {
-        $request->validate([
-            'telegram_chat_id' => 'required|string|max:100',
-            'auto_away_message' => 'sometimes|string|max:500',
-            'agent_sla_minutes' => 'sometimes|integer|min:1|max:60',
-        ]);
-
         $tenant = app('current_tenant');
+
+        // Generate a random 6-char code
+        $code = strtoupper(Str::random(6));
 
         $connection = TelegramConnection::withoutGlobalScope('tenant')->updateOrCreate(
             ['tenant_id' => $tenant->id],
             [
-                'telegram_chat_id' => $request->telegram_chat_id,
+                'connection_code' => $code,
+                'connection_code_expires_at' => now()->addHours(24),
                 'connected_by' => $request->user()->id,
-                'auto_away_message' => $request->auto_away_message,
-                'agent_sla_minutes' => $request->agent_sla_minutes ?? 5,
             ]
         );
 
         return response()->json([
-            'connection' => $connection,
-            'message' => 'Telegram chat ID saved. Send a test message to verify.',
+            'data' => [
+                'connection_code' => $code,
+                'details' => $connection,
+            ],
         ]);
     }
 
@@ -135,5 +135,40 @@ class TelegramConnectionController extends Controller
         return response()->json([
             'connection' => $connection->fresh(),
         ]);
+    }
+
+    /**
+     * Get Telegram webhook info (for dashboard system status).
+     */
+    public function webhookInfo(): JsonResponse
+    {
+        $botToken = config('services.telegram.bot_token');
+        if (empty($botToken)) {
+            return response()->json(['data' => ['url' => null, 'pending_update_count' => 0]]);
+        }
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::get(
+                "https://api.telegram.org/bot{$botToken}/getWebhookInfo"
+            );
+
+            if ($response->successful()) {
+                $result = $response->json('result', []);
+                return response()->json([
+                    'data' => [
+                        'url' => $result['url'] ?? null,
+                        'pending_update_count' => $result['pending_update_count'] ?? 0,
+                        'last_error_message' => $result['last_error_message'] ?? null,
+                        'last_error_date' => $result['last_error_date'] ?? null,
+                    ],
+                ]);
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::warning('Failed to get Telegram webhook info', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return response()->json(['data' => ['url' => null, 'pending_update_count' => 0]]);
     }
 }

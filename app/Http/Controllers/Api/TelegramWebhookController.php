@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\WidgetMessageSent;
+use App\Events\WidgetStateChanged;
 use App\Services\Chat\TelegramBotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -36,30 +38,48 @@ class TelegramWebhookController extends Controller
 
         Log::debug('Telegram webhook received', [
             'update_id' => $update['update_id'] ?? null,
+            'payload' => json_encode($update),
         ]);
 
         try {
             $result = $this->telegramService->handleWebhookUpdate($update);
 
-            // If a message was relayed back to a conversation, broadcast it
-            if ($result && ($result['action'] ?? '') === 'message_relayed') {
-                // Broadcast via Reverb WebSocket so widget gets the message
-                event(new \App\Events\WidgetMessageReceived(
+            if (!$result) {
+                return response()->json(['ok' => true]);
+            }
+
+            $action = $result['action'] ?? '';
+
+            // Dealer replied via Telegram → broadcast to widget + dashboard
+            if ($action === 'message_relayed' && !empty($result['message'])) {
+                broadcast(new WidgetMessageSent(
                     $result['conversation_id'],
-                    $result['content'],
-                    'human_agent'
+                    $result['message']
                 ));
             }
 
-            if ($result && in_array($result['action'] ?? '', ['accepted', 'closed'])) {
-                event(new \App\Events\ConversationStateChanged(
+            // Dealer accepted via Telegram inline button
+            if ($action === 'accepted') {
+                broadcast(new WidgetStateChanged(
                     $result['conversation_id'],
-                    $result['action'] === 'accepted' ? 'human' : 'closed'
+                    $result['previous_state'] ?? 'open',
+                    'human',
+                    'Dealer (Telegram)'
+                ));
+            }
+
+            // Dealer closed conversation via Telegram
+            if ($action === 'closed') {
+                broadcast(new WidgetStateChanged(
+                    $result['conversation_id'],
+                    $result['previous_state'] ?? 'human',
+                    'closed'
                 ));
             }
         } catch (\Exception $e) {
             Log::error('Telegram webhook processing error', [
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
         }
 
