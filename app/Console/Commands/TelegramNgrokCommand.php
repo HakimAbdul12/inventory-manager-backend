@@ -62,14 +62,17 @@ class TelegramNgrokCommand extends Command
 
         $this->info("ngrok tunnel established at: <fg=green>{$publicUrl}</>");
 
-        // Register Webhook
         $this->info("Registering webhook with Telegram...");
         $webhookUrl = $publicUrl . '/webhooks/telegram';
-        $secret = env('TELEGRAM_WEBHOOK_SECRET', '');
+        $secret = config('services.telegram.webhook_secret');
 
-        if ($telegram->setWebhook($webhookUrl, $secret)) {
+        if (empty($secret)) {
+            $this->warn("⚠️ TELEGRAM_WEBHOOK_SECRET is not set in .env. Webhook will be registered without a secret token.");
+        }
+
+        if ($telegram->setWebhook($webhookUrl, $secret ?? '')) {
             $this->info("✅ Webhook successfully registered: <fg=cyan>{$webhookUrl}</>");
-            $this->info("Press Ctrl+C to stop ngrok and exit.");
+            $this->info("Press Ctrl+C to stop ngrok and keep the tunnel alive.");
         } else {
             $this->error("❌ Failed to register webhook with Telegram.");
         }

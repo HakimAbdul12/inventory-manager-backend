@@ -29,7 +29,12 @@ class TelegramWebhookController extends Controller
         if (!empty($secretToken)) {
             $headerToken = $request->header('X-Telegram-Bot-Api-Secret-Token', '');
             if ($headerToken !== $secretToken) {
-                Log::warning('Telegram webhook: invalid secret token');
+                Log::warning('Telegram webhook: invalid secret token', [
+                    'expected_length' => strlen($secretToken),
+                    'received_length' => strlen($headerToken),
+                    'received_start' => substr($headerToken, 0, 3) . '...',
+                    'received_end' => '...' . substr($headerToken, -3),
+                ]);
                 return response()->json(['error' => 'Unauthorized'], 401);
             }
         }
@@ -52,9 +57,12 @@ class TelegramWebhookController extends Controller
 
             // Dealer replied via Telegram → broadcast to widget + dashboard
             if ($action === 'message_relayed' && !empty($result['message'])) {
+                $msg = $result['message'];
+                $msg['agent_name'] = $result['agent_name'] ?? 'Support Agent';
+
                 broadcast(new WidgetMessageSent(
                     $result['conversation_id'],
-                    $result['message']
+                    $msg
                 ));
             }
 
@@ -64,16 +72,17 @@ class TelegramWebhookController extends Controller
                     $result['conversation_id'],
                     $result['previous_state'] ?? 'open',
                     'human',
-                    'Dealer (Telegram)'
+                    $result['agent_name'] ?? 'Support Agent'
                 ));
             }
 
-            // Dealer closed conversation via Telegram
-            if ($action === 'closed') {
+            // Dealer closed conversation or handed back via Telegram
+            if (in_array($action, ['closed', 'handed_back'])) {
+                $newState = ($action === 'handed_back') ? 'ai' : 'closed';
                 broadcast(new WidgetStateChanged(
                     $result['conversation_id'],
                     $result['previous_state'] ?? 'human',
-                    'closed'
+                    $newState
                 ));
             }
         } catch (\Exception $e) {

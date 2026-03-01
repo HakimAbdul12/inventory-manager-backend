@@ -16,7 +16,7 @@ use App\Services\Chat\TelegramBotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Log;
+
 
 class WidgetConversationController extends Controller
 {
@@ -262,9 +262,11 @@ class WidgetConversationController extends Controller
         }
 
         $agentName = null;
-        if ($conversation->isHumanMode() && $conversation->telegram_chat_id) {
-            $telegramConn = \App\Models\TelegramConnection::where('telegram_chat_id', $conversation->telegram_chat_id)->first();
-            $agentName = $telegramConn?->telegram_username ?? 'Support Agent';
+        if ($conversation->isHumanMode() && $conversation->agent_telegram_chat_id) {
+            $agent = \App\Models\TelegramAgent::where('tenant_id', $config->tenant_id)
+                ->where('telegram_chat_id', $conversation->agent_telegram_chat_id)
+                ->first();
+            $agentName = $agent?->custom_name ?: ($agent?->first_name ?? 'Support Agent');
         }
 
         return response()->json([
@@ -353,14 +355,8 @@ class WidgetConversationController extends Controller
         ]));
 
         // Forward to Telegram
-        $telegramConnection = $config->tenant
-            ? \App\Models\TelegramConnection::withoutGlobalScope('tenant')
-            ->where('tenant_id', $config->tenant_id)
-            ->first()
-            : null;
-
-        if ($telegramConnection) {
-            $this->telegramService->forwardToDealer($telegramConnection, $conversation, $message);
+        if ($conversation->agent_telegram_chat_id) {
+            $this->telegramService->forwardToDealer($conversation, $message);
         }
 
         return response()->json([
@@ -382,26 +378,57 @@ class WidgetConversationController extends Controller
     ): array {
         $previousState = $conversation->state;
 
-        // Always transition to human state — the dashboard queue will pick it up
-        $conversation->transitionTo(ChatConversation::STATE_HUMAN);
-
-        // Try to notify via Telegram if configured (non-blocking)
+        // Check Telegram availability and capacity
         $telegramNotified = false;
-        try {
-            $telegramConnection = \App\Models\TelegramConnection::withoutGlobalScope('tenant')
-                ->where('tenant_id', $config->tenant_id)
-                ->where('is_active', true)
-                ->first();
+        $connection = \App\Models\TelegramConnection::withoutGlobalScope('tenant')
+            ->where('tenant_id', $config->tenant_id)
+            ->where('is_active', true)
+            ->first();
 
-            if ($telegramConnection && $telegramConnection->isReady()) {
-                $this->telegramService->notifyHandoff($telegramConnection, $conversation);
+        // If they use Telegram, check capacity
+        if ($connection && $connection->isReady()) {
+            $agents = \App\Models\TelegramAgent::where('tenant_id', $config->tenant_id)
+                ->where('is_active', true)
+                ->get();
+
+            if ($agents->isNotEmpty()) {
+                $occupiedChatIds = \App\Models\ChatConversation::withoutGlobalScope('tenant')
+                    ->where('tenant_id', $config->tenant_id)
+                    ->where('state', ChatConversation::STATE_HUMAN)
+                    ->whereNotNull('agent_telegram_chat_id')
+                    ->pluck('agent_telegram_chat_id')
+                    ->toArray();
+
+                $availableAgents = $agents->filter(function ($agent) use ($occupiedChatIds) {
+                    return !in_array($agent->telegram_chat_id, $occupiedChatIds);
+                });
+
+                if ($availableAgents->isEmpty()) {
+                    // All agents are occupied, reject handoff
+                    $msg = $conversation->messages()->create([
+                        'sender_type' => ChatWidgetMessage::SENDER_AI,
+                        'content' => "All our agents are currently busy. Please try again in a few minutes or leave your email address and we'll get back to you shortly.",
+                        'message_type' => ChatWidgetMessage::TYPE_SYSTEM,
+                    ]);
+
+                    return [
+                        'message' => $msg,
+                        'state' => $previousState,
+                        'telegram_notified' => false,
+                    ];
+                }
+
+                // Transition and notify available agents
+                $conversation->transitionTo(ChatConversation::STATE_HUMAN);
+                $this->telegramService->notifyHandoff($availableAgents, $conversation);
                 $telegramNotified = true;
+            } else {
+                // They use telegram but have 0 agents connected. Transition normally (dashboard queue).
+                $conversation->transitionTo(ChatConversation::STATE_HUMAN);
             }
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::warning('Telegram notification failed during handoff', [
-                'conversation_id' => $conversation->id,
-                'error' => $e->getMessage(),
-            ]);
+        } else {
+            // They don't use Telegram (or it's disabled). Transition normally for the dashboard queue.
+            $conversation->transitionTo(ChatConversation::STATE_HUMAN);
         }
 
         $msg = $conversation->messages()->create([

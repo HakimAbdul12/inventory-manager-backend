@@ -318,9 +318,12 @@ Route::prefix('chat-widget')->middleware(['auth:sanctum', 'tenant'])->group(func
 
     // Telegram
     Route::get('/telegram', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'show']);
+    Route::get('/telegram/agents', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'agents']);
+    Route::put('/telegram/agents/{agent}', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'updateAgent']);
     Route::post('/telegram/connect', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'connect']);
     Route::post('/telegram/test', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'test']);
     Route::post('/telegram/disconnect', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'disconnect']);
+    Route::delete('/telegram/agents/{agent}', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'removeAgent']);
     Route::put('/telegram/settings', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'updateSettings']);
     Route::get('/telegram/webhook-info', [\App\Http\Controllers\Api\TelegramConnectionController::class, 'webhookInfo']);
 

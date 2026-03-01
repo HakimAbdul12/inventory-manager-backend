@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\TelegramConnection;
+use App\Models\TelegramAgent;
 use App\Services\Chat\TelegramBotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -134,6 +135,67 @@ class TelegramConnectionController extends Controller
 
         return response()->json([
             'connection' => $connection->fresh(),
+        ]);
+    }
+
+    /**
+     * Get the list of connected Telegram agents.
+     */
+    public function agents(): JsonResponse
+    {
+        $tenant = app('current_tenant');
+
+        $agents = TelegramAgent::where('tenant_id', $tenant->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'data' => $agents
+        ]);
+    }
+
+    /**
+     * Update a specific Telegram agent (e.g., set custom name).
+     */
+    public function updateAgent(Request $request, string $agentId): JsonResponse
+    {
+        $request->validate([
+            'custom_name' => 'nullable|string|max:255',
+            'is_active' => 'sometimes|boolean',
+        ]);
+
+        $tenant = app('current_tenant');
+
+        $agent = TelegramAgent::where('tenant_id', $tenant->id)
+            ->where('id', $agentId)
+            ->firstOrFail();
+
+        $agent->update($request->only([
+            'custom_name',
+            'is_active',
+        ]));
+
+        return response()->json([
+            'message' => 'Agent updated successfully.',
+            'data' => $agent->fresh(),
+        ]);
+    }
+
+    /**
+     * Remove a specific Telegram agent.
+     */
+    public function removeAgent(string $agentId): JsonResponse
+    {
+        $tenant = app('current_tenant');
+
+        $agent = TelegramAgent::where('tenant_id', $tenant->id)
+            ->where('id', $agentId)
+            ->firstOrFail();
+
+        $agent->delete();
+
+        return response()->json([
+            'message' => 'Agent removed successfully.'
         ]);
     }
 

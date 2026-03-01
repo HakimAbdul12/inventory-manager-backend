@@ -23,12 +23,15 @@ class ChatConversation extends Model
         'session_token',
         'state',
         'telegram_chat_id',
+        'agent_telegram_chat_id',
+        'telegram_notified_agents',
         'metadata',
         'ai_context',
         'last_activity_at',
     ];
 
     protected $casts = [
+        'telegram_notified_agents' => 'array',
         'metadata' => 'array',
         'ai_context' => 'array',
         'last_activity_at' => 'datetime',
@@ -102,6 +105,17 @@ class ChatConversation extends Model
     public function close(): self
     {
         return $this->transitionTo(self::STATE_CLOSED);
+    }
+
+    public function resumeAI(): self
+    {
+        $this->update([
+            'state' => self::STATE_AI,
+            'agent_telegram_chat_id' => null,
+            'last_activity_at' => now(),
+        ]);
+
+        return $this;
     }
 
     public function isActive(): bool
