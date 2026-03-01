@@ -101,7 +101,7 @@ class InventorySearchService
             }
 
             $primaryImage = $item->images->firstWhere('is_primary', true);
-            $image = $primaryImage?->url ?? $item->images->first()?->url;
+            $image = $primaryImage?->url;
 
             return [
                 'id' => $item->id,

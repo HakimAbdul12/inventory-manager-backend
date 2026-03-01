@@ -37,4 +37,16 @@ class InventoryImage extends Model
     {
         return $this->belongsTo(InventoryItem::class);
     }
+
+    /**
+     * Get the absolute URL for the image.
+     */
+    public function getUrlAttribute(): string
+    {
+        if (filter_var($this->path, FILTER_VALIDATE_URL)) {
+            return $this->path;
+        }
+
+        return config('app.url') . \Illuminate\Support\Facades\Storage::url($this->path);
+    }
 }

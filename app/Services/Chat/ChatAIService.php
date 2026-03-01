@@ -6,7 +6,7 @@ use App\Models\ChatConversation;
 use App\Models\ChatWidgetMessage;
 use App\Models\WorkspaceChatConfig;
 use App\Services\OpenRouterClient;
-use Illuminate\Support\Facades\Log;
+
 
 class ChatAIService
 {
@@ -69,7 +69,7 @@ class ChatAIService
         );
 
         // Build messages for AI
-        $messages = $this->buildMessages($conversation, $config, $knowledgeContext, $vehicleCards);
+        $messages = $this->buildMessages($conversation, $config, $knowledgeContext, $vehicleCards, $visitorMessage);
 
         $tools = [
             [
@@ -153,9 +153,10 @@ class ChatAIService
         ChatConversation $conversation,
         WorkspaceChatConfig $config,
         array $knowledgeContext,
-        array $vehicleCards
+        array $vehicleCards,
+        string $visitorMessage
     ): array {
-        $systemPrompt = $this->buildSystemPrompt($config, $knowledgeContext, $vehicleCards);
+        $systemPrompt = $this->buildSystemPrompt($config, $knowledgeContext, $vehicleCards, $visitorMessage);
 
         $messages = [
             ['role' => 'system', 'content' => $systemPrompt],
@@ -179,7 +180,8 @@ class ChatAIService
     protected function buildSystemPrompt(
         WorkspaceChatConfig $config,
         array $knowledgeContext,
-        array $vehicleCards
+        array $vehicleCards,
+        string $visitorMessage
     ): string {
         $personality = $this->getPersonalityInstructions($config->bot_personality);
         $aggressiveness = $this->getAggressivenessInstructions($config->ai_aggressiveness);
@@ -217,12 +219,14 @@ PROMPT;
         }
 
         // Add inventory context
+        $isInventoryQuery = $this->isInventoryQuery($visitorMessage);
         if (!empty($vehicleCards)) {
-            $prompt .= "\n\n## Available Inventory\nThese vehicles match what the customer is looking for:\n";
-            foreach ($vehicleCards as $card) {
-                $prompt .= "- {$card['year']} {$card['make']} {$card['model']} | \${$card['price']} | {$card['mileage']} mi\n";
-            }
-            $prompt .= "\nPresent these vehicles naturally in your response.";
+            $count = count($vehicleCards);
+            $summaryParts = array_map(fn($c) => "{$c['year']} {$c['make']} {$c['model']}", $vehicleCards);
+            $summary = implode(', ', $summaryParts);
+            $prompt .= "\n\n## Available Inventory\n{$count} matching vehicle(s) found: {$summary}.\nVehicle cards with images, prices, and action buttons will be displayed automatically below your message. Do NOT repeat vehicle details (price, mileage, specs) in your text. Instead, write a brief, conversational intro like \"Here's what I found for you!\" or \"Great news — we have some options that match!\". Keep your text response short (1-2 sentences max) since the cards provide all the details.";
+        } elseif ($isInventoryQuery) {
+            $prompt .= "\n\n## Inventory Search: No Matches\nNo matching vehicles were found in our current inventory for this specific request. Inform the customer politely. To ensure we don't lose the customer, you MUST encourage them to speak with a human agent who can check upcoming stock or incoming arrivals. Suggest they click the 🙋 button or type \"talk to a human\".";
         }
 
         return $prompt;
