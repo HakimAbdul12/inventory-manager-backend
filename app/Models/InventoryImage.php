@@ -23,6 +23,8 @@ class InventoryImage extends Model
         'sizes',
     ];
 
+    protected $appends = ['url'];
+
     protected $casts = [
         'is_primary' => 'boolean',
         'sizes' => 'array',

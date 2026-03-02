@@ -217,11 +217,14 @@ class InventoryController extends Controller
 
     public function externalIndex(Request $request): JsonResponse
     {
-        // Use global tenant scope
-        $items = InventoryItem::with(['category'])
+        $query = InventoryItem::with(['category'])
             ->withCount('images')
-            ->orderByDesc('created_at')
-            ->paginate(10);
+            ->where('status', 'published')
+            ->orderByDesc('created_at');
+
+        $this->applyFilters($query, $request);
+
+        $items = $query->paginate(10);
 
         return response()->json([
             'success' => true,
@@ -232,7 +235,7 @@ class InventoryController extends Controller
                     'title' => $item->title,
                     'status' => $item->status,
                     'category' => $item->category->name,
-                    'primaryImage' => $item->primary_image,
+                    'primaryImage' => $item->primary_image ? $item->primary_image->url : null,
                     'createdAt' => $item->created_at->toIso8601String(),
                     // Additional fields from generated data
                     'make' => $data['make'] ?? null,
@@ -242,6 +245,17 @@ class InventoryController extends Controller
                     'condition' => $data['condition'] ?? null,
                     'mileage' => $data['mileage'] ?? null,
                     'color' => $data['color'] ?? null,
+                    'transmission' => $data['transmission'] ?? null,
+                    'fuelType' => $data['fuelType'] ?? null,
+                    'drivetrain' => $data['drivetrain'] ?? null,
+                    'engine' => $data['engine'] ?? null,
+                    'isOneTimePaymentAvailable' => $data['isOneTimePaymentAvailable'] ?? null,
+                    'isNegotiable' => $data['isNegotiable'] ?? null,
+                    'isLeaseAvailable' => $data['isLeaseAvailable'] ?? null,
+                    'leaseMonthsRemaining' => $data['leaseMonthsRemaining'] ?? null,
+                    'leaseTerms' => $data['leaseTerms'] ?? [],
+                    'isFinancingAvailable' => $data['isFinancingAvailable'] ?? null,
+                    'financingTerms' => $data['financingTerms'] ?? null,
                     'description' => isset($data['description'])
                         ? \Illuminate\Support\Str::limit($data['description'], 120)
                         : null,
@@ -253,6 +267,69 @@ class InventoryController extends Controller
                 'lastPage' => $items->lastPage(),
                 'perPage' => $items->perPage(),
                 'total' => $items->total(),
+            ],
+        ]);
+    }
+
+    public function externalShow(string $id): JsonResponse
+    {
+        $item = InventoryItem::with(['category', 'images'])
+            ->where('status', 'published')
+            ->find($id);
+
+        if (!$item) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Inventory item not found or not published',
+            ], 404);
+        }
+
+        $data = $item->generated_data ?? [];
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $item->id,
+                'title' => $item->title,
+                'status' => $item->status,
+                'category' => [
+                    'name' => $item->category->name,
+                    'slug' => $item->category->slug,
+                    'fields' => $item->category->fields,
+                ],
+                'generatedData' => $data,
+                'images' => $item->images->map(fn($img) => [
+                    'id' => $img->id,
+                    'url' => $img->url,
+                    'alt' => $img->alt,
+                    'is_primary' => $img->is_primary,
+                ]),
+                // Explicitly pull out rich details for easier frontend access
+                'make' => $data['make'] ?? null,
+                'model' => $data['model'] ?? null,
+                'year' => $data['year'] ?? null,
+                'price' => $data['price'] ?? null,
+                'condition' => $data['condition'] ?? null,
+                'mileage' => $data['mileage'] ?? null,
+                'color' => $data['color'] ?? null,
+                'transmission' => $data['transmission'] ?? null,
+                'fuelType' => $data['fuelType'] ?? null,
+                'drivetrain' => $data['drivetrain'] ?? null,
+                'engine' => $data['engine'] ?? null,
+                'description' => $data['description'] ?? null,
+                'additionalFeatures' => $data['additionalFeatures'] ?? [],
+                'highlights' => $data['highlights'] ?? [],
+
+                // Payment/New Fields
+                'isOneTimePaymentAvailable' => $data['isOneTimePaymentAvailable'] ?? null,
+                'isNegotiable' => $data['isNegotiable'] ?? null,
+                'isLeaseAvailable' => $data['isLeaseAvailable'] ?? null,
+                'leaseMonthsRemaining' => $data['leaseMonthsRemaining'] ?? null,
+                'leaseTerms' => $data['leaseTerms'] ?? [],
+                'isFinancingAvailable' => $data['isFinancingAvailable'] ?? null,
+                'financingTerms' => $data['financingTerms'] ?? null,
+
+                'createdAt' => $item->created_at->toIso8601String(),
             ],
         ]);
     }
