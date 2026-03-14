@@ -50,7 +50,9 @@ return [
         'widget/*',
         'widget',
         'sftp/*',
-        'sftp'
+        'sftp',
+        'crawler',
+        'crawler/*',
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

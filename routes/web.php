@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\DealerChatController;
 use App\Http\Controllers\Api\ChatAttachmentController;
 use App\Http\Controllers\Api\DealerFeedController;
 use App\Http\Controllers\Api\TenantController;
+use App\Http\Controllers\Api\CrawlJobController;
 
 
 /*
@@ -371,4 +372,27 @@ Route::prefix('sftp')->middleware(['auth:sanctum', 'tenant'])->group(function ()
     // Push History
     Route::get('/history', [\App\Http\Controllers\Api\InventoryPushHistoryController::class, 'index']);
     Route::get('/history/{id}', [\App\Http\Controllers\Api\InventoryPushHistoryController::class, 'show']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Website Crawler Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('crawler')->middleware(['auth:sanctum', 'tenant'])->group(function () {
+    Route::get('/', [CrawlJobController::class, 'index']);
+    Route::post('/', [CrawlJobController::class, 'store']);
+    Route::get('/{id}', [CrawlJobController::class, 'show']);
+    Route::delete('/{id}', [CrawlJobController::class, 'destroy']);
+
+    // Actions
+    Route::post('/{id}/pause', [CrawlJobController::class, 'pause']);
+    Route::post('/{id}/resume', [CrawlJobController::class, 'resume']);
+    Route::post('/{id}/cancel', [CrawlJobController::class, 'cancel']);
+    Route::post('/{id}/chunk-and-index', [CrawlJobController::class, 'chunkAndIndex']);
+
+    // Pages
+    Route::get('/{id}/pages', [CrawlJobController::class, 'pages']);
+    Route::get('/{id}/pages/{pageId}', [CrawlJobController::class, 'pageContent']);
+    Route::put('/{id}/pages/{pageId}/toggle', [CrawlJobController::class, 'togglePage']);
 });

@@ -116,3 +116,17 @@ Broadcast::channel('tenant.{tenantId}.handoffs', function ($user, $tenantId) {
 // Note: chat-conversation.{id} uses a public Channel (not PrivateChannel)
 // so that the unauthenticated widget can subscribe without Sanctum auth.
 // Security is enforced by session_token checks in the event payload.
+
+/*
+|--------------------------------------------------------------------------
+| Website Crawler Channel
+|--------------------------------------------------------------------------
+|
+| This channel is used for real-time updates during website crawling.
+| Only users whose tenant owns the crawl job can subscribe.
+|
+*/
+Broadcast::channel('crawl-job.{jobId}', function ($user, $jobId) {
+    $job = \App\Models\CrawlJob::withoutGlobalScope('tenant')->find($jobId);
+    return $job && (string)$job->tenant_id === (string)$user->current_tenant_id;
+});

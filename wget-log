@@ -1,0 +1,30 @@
+Spider mode enabled. Check if remote file exists.
+--2026-03-14 01:13:01--  https://www.caterpillar.com/
+Resolving www.caterpillar.com (www.caterpillar.com)... 23.214.149.38
+Connecting to www.caterpillar.com (www.caterpillar.com)|23.214.149.38|:443... connected.
+HTTP request sent, awaiting response... Read error (Connection timed out) in headers.
+Retrying.
+
+Spider mode enabled. Check if remote file exists.
+--2026-03-14 01:28:03--  (try: 2)  https://www.caterpillar.com/
+Connecting to www.caterpillar.com (www.caterpillar.com)|23.214.149.38|:443... connected.
+HTTP request sent, awaiting response... Read error (Connection timed out) in headers.
+Retrying.
+
+Spider mode enabled. Check if remote file exists.
+--2026-03-14 01:43:05--  (try: 3)  https://www.caterpillar.com/
+Connecting to www.caterpillar.com (www.caterpillar.com)|23.214.149.38|:443... connected.
+HTTP request sent, awaiting response... Read error (Connection timed out) in headers.
+Retrying.
+
+Spider mode enabled. Check if remote file exists.
+--2026-03-14 10:42:58--  (try: 4)  https://www.caterpillar.com/
+Connecting to www.caterpillar.com (www.caterpillar.com)|23.214.149.38|:443... connected.
+HTTP request sent, awaiting response... Read error (Connection timed out) in headers.
+Retrying.
+
+Spider mode enabled. Check if remote file exists.
+--2026-03-14 10:58:02--  (try: 5)  https://www.caterpillar.com/
+Connecting to www.caterpillar.com (www.caterpillar.com)|23.214.149.38|:443... failed: Network is unreachable.
+Resolving www.caterpillar.com (www.caterpillar.com)... failed: Temporary failure in name resolution.
+wget: unable to resolve host address ‘www.caterpillar.com’
