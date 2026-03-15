@@ -14,3 +14,6 @@ Schedule::command('sftp:dispatch-scheduled-pushes --time=12:00')->dailyAt('12:00
 
 // ── Email Leads Scheduler ───────────────────────────────
 Schedule::command('leads:fetch-emails')->everyThirtyMinutes();
+
+// ── Inactive Chats Scheduler ────────────────────────────
+Schedule::command('chat:close-inactive')->everyMinute();

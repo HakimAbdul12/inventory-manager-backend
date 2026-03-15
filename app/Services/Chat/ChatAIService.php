@@ -33,13 +33,33 @@ class ChatAIService
     public function processMessage(
         ChatConversation $conversation,
         WorkspaceChatConfig $config,
-        string $visitorMessage
+        string $visitorMessage,
+        ?string $attachmentUrl = null,
+        ?string $attachmentType = null,
+        ?string $attachmentLocalPath = null
     ): array {
+        // Transcribe audio if needed
+        if ($attachmentType === 'audio' && $attachmentLocalPath) {
+            $transcription = $this->transcribeAudio($attachmentLocalPath);
+            if ($transcription) {
+                $visitorMessage = $visitorMessage 
+                    ? "{$visitorMessage}\n\n[Voice Note Transcript]: {$transcription}" 
+                    : "[Voice Note Transcript]: {$transcription}";
+            }
+        }
+
+        $meta = [];
+        if ($attachmentUrl) {
+            $meta['attachment_url'] = $attachmentUrl;
+            $meta['attachment_type'] = $attachmentType;
+        }
+
         // Store visitor message
         $conversation->messages()->create([
             'sender_type' => ChatWidgetMessage::SENDER_VISITOR,
             'content' => $visitorMessage,
             'message_type' => ChatWidgetMessage::TYPE_TEXT,
+            'metadata' => empty($meta) ? null : $meta,
         ]);
 
         $conversation->appendToContext('user', $visitorMessage);
@@ -54,7 +74,20 @@ class ChatAIService
 
         // Search for relevant inventory if message mentions vehicles
         $vehicleCards = [];
-        if ($this->isInventoryQuery($visitorMessage)) {
+        $imageDescription = null;
+
+        // If an image is attached, pre-identify the vehicle from the image
+        if ($attachmentType === 'image' && $attachmentUrl) {
+            $imageDescription = $this->identifyVehicleFromImage($attachmentUrl);
+            if ($imageDescription) {
+                // Enrich the visitor message with image context for better search
+                $searchText = $imageDescription;
+                $vehicleCards = $this->inventorySearch->searchFromMessage(
+                    $searchText,
+                    $conversation->tenant_id
+                );
+            }
+        } elseif ($this->isInventoryQuery($visitorMessage)) {
             $vehicleCards = $this->inventorySearch->searchFromMessage(
                 $visitorMessage,
                 $conversation->tenant_id
@@ -69,7 +102,7 @@ class ChatAIService
         );
 
         // Build messages for AI
-        $messages = $this->buildMessages($conversation, $config, $knowledgeContext, $vehicleCards, $visitorMessage);
+        $messages = $this->buildMessages($conversation, $config, $knowledgeContext, $vehicleCards, $visitorMessage, $attachmentUrl, $attachmentType);
 
         $tools = [
             [
@@ -98,12 +131,21 @@ class ChatAIService
             ]
         ];
 
-        // Call AI
-        $result = $this->ai->chatCompletion($messages, [
+        // Call AI — use vision model when image is attached
+        $aiOptions = [
             'temperature' => $this->getTemperature($config),
             'max_tokens' => 800,
-            'tools' => $tools,
-        ]);
+        ];
+
+        if ($attachmentType === 'image' && $attachmentUrl) {
+            // Use vision model for image analysis — don't pass tools since
+            // free vision models can't handle tool calling properly
+            $aiOptions['model'] = config('openrouter.vision_model', 'nvidia/nemotron-nano-12b-v2-vl:free');
+        } else {
+            $aiOptions['tools'] = $tools;
+        }
+
+        $result = $this->ai->chatCompletion($messages, $aiOptions);
 
         $aiContent = $result['content'];
         $toolCalls = $result['tool_calls'] ?? [];
@@ -146,15 +188,14 @@ class ChatAIService
         return $response;
     }
 
-    /**
-     * Build the message array for the AI, including system prompt, knowledge, and history.
-     */
     protected function buildMessages(
         ChatConversation $conversation,
         WorkspaceChatConfig $config,
         array $knowledgeContext,
         array $vehicleCards,
-        string $visitorMessage
+        string $visitorMessage,
+        ?string $attachmentUrl = null,
+        ?string $attachmentType = null
     ): array {
         $systemPrompt = $this->buildSystemPrompt($config, $knowledgeContext, $vehicleCards, $visitorMessage);
 
@@ -171,7 +212,137 @@ class ChatAIService
             ];
         }
 
+        // Modify the last user message to include an image for Vision API
+        if ($attachmentType === 'image' && $attachmentUrl) {
+            $lastIndex = count($messages) - 1;
+            if (isset($messages[$lastIndex]) && $messages[$lastIndex]['role'] === 'user') {
+                $text = $messages[$lastIndex]['content'];
+
+                // Convert image to base64 data URL so remote AI models can see it
+                $imageDataUrl = $this->imageToBase64DataUrl($attachmentUrl);
+
+                $messages[$lastIndex]['content'] = [
+                    [
+                        'type' => 'text',
+                        'text' => $text ?: "The user sent an image. Describe what you see and help them accordingly.",
+                    ],
+                    [
+                        'type' => 'image_url',
+                        'image_url' => [
+                            'url' => $imageDataUrl,
+                        ]
+                    ]
+                ];
+            }
+        }
+
         return $messages;
+    }
+
+    /**
+     * Use the vision model to quickly identify a vehicle from an image.
+     * Returns a short text like "BMW M5 sedan" for inventory search.
+     */
+    protected function identifyVehicleFromImage(string $attachmentUrl): ?string
+    {
+        try {
+            $imageDataUrl = $this->imageToBase64DataUrl($attachmentUrl);
+            $visionModel = config('openrouter.vision_model', 'nvidia/nemotron-nano-12b-v2-vl:free');
+
+            $result = $this->ai->chatCompletion([
+                ['role' => 'system', 'content' => 'You are a vehicle identification expert. Identify the vehicle in the image and respond with ONLY the make and model (e.g. "BMW M5" or "Toyota Camry sedan"). Nothing else.'],
+                ['role' => 'user', 'content' => [
+                    ['type' => 'text', 'text' => 'What vehicle is in this image? Reply with only the make and model.'],
+                    ['type' => 'image_url', 'image_url' => ['url' => $imageDataUrl]],
+                ]],
+            ], [
+                'model' => $visionModel,
+                'max_tokens' => 50,
+                'temperature' => 0.1,
+            ]);
+
+            $identification = trim($result['content'] ?? '');
+
+            if (!empty($identification) && strlen($identification) < 100) {
+                \Illuminate\Support\Facades\Log::info('Vehicle identified from image', ['result' => $identification]);
+                return $identification;
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::warning('Vehicle identification from image failed', ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
+     * Convert an image URL (or local file path) to a base64 data URL.
+     */
+    protected function imageToBase64DataUrl(string $url): string
+    {
+        try {
+            // If it's a local URL (e.g. localhost), read from disk directly
+            $appUrl = rtrim(config('app.url'), '/');
+            if (str_starts_with($url, $appUrl . '/storage/')) {
+                $relativePath = str_replace($appUrl . '/storage/', '', $url);
+                $fullPath = storage_path('app/public/' . $relativePath);
+                if (file_exists($fullPath)) {
+                    $mime = mime_content_type($fullPath);
+                    $data = base64_encode(file_get_contents($fullPath));
+                    return "data:{$mime};base64,{$data}";
+                }
+            }
+
+            // For remote URLs, download and encode
+            $contents = file_get_contents($url);
+            $finfo = new \finfo(FILEINFO_MIME_TYPE);
+            $mime = $finfo->buffer($contents);
+            return 'data:' . $mime . ';base64,' . base64_encode($contents);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::warning('Could not convert image to base64', ['error' => $e->getMessage()]);
+            return $url; // fallback to original URL
+        }
+    }
+
+    /**
+     * Transcribe audio using Groq's free Whisper API.
+     * Falls back gracefully if no API key is configured.
+     */
+    protected function transcribeAudio(string $localPath): ?string
+    {
+        try {
+            $apiKey = config('services.groq.api_key') ?? env('GROQ_API_KEY');
+            if (!$apiKey) {
+                \Illuminate\Support\Facades\Log::warning('GROQ_API_KEY not set — skipping audio transcription');
+                return null;
+            }
+
+            if (!file_exists($localPath)) {
+                \Illuminate\Support\Facades\Log::warning('Audio file not found for transcription', ['path' => $localPath]);
+                return null;
+            }
+
+            $response = \Illuminate\Support\Facades\Http::timeout(60)
+                ->withHeaders(['Authorization' => 'Bearer ' . $apiKey])
+                ->attach('file', file_get_contents($localPath), basename($localPath))
+                ->post('https://api.groq.com/openai/v1/audio/transcriptions', [
+                    'model' => 'whisper-large-v3-turbo',
+                    'response_format' => 'json',
+                ]);
+
+            if ($response->successful()) {
+                return $response->json('text');
+            }
+
+            \Illuminate\Support\Facades\Log::error('Groq Whisper API error', [
+                'status' => $response->status(),
+                'response' => $response->body(),
+            ]);
+            return null;
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Whisper transcription exception', ['error' => $e->getMessage()]);
+            return null;
+        }
     }
 
     /**
@@ -203,6 +374,12 @@ You are "{$config->bot_name}", an AI sales assistant for an automotive dealershi
 - When appropriate, suggest actions: "Book a Test Drive", "Request Financing", "Contact Sales".
 - Keep responses under 200 words unless the customer asks for detailed information.
 - Auto-detect the customer's language and respond in the same language.
+
+## Image Understanding
+- If the user sends an image, analyze it carefully.
+- Identify the vehicle make, model, body type, color, and any other visible details.
+- Use those details to search inventory and suggest similar vehicles.
+- If asked "do you have this car?", identify what it is first, then answer based on your inventory data.
 PROMPT;
 
         // Add business hours context

@@ -129,8 +129,13 @@ class WidgetConversationController extends Controller
     {
         $request->validate([
             'session_token' => 'required|string',
-            'message' => 'required|string|max:2000',
+            'message' => 'nullable|string|max:2000',
+            'attachment' => 'nullable|file|max:20480', // 20MB max
         ]);
+
+        if (empty($request->message) && !$request->hasFile('attachment')) {
+            return response()->json(['error' => 'Message or attachment is required'], 422);
+        }
 
         $config = $this->resolveConfig($apiKey);
         if (!$config) {
@@ -150,16 +155,39 @@ class WidgetConversationController extends Controller
             return response()->json(['error' => 'Conversation has been closed'], 410);
         }
 
+        $attachmentUrl = null;
+        $attachmentType = null;
+        $attachmentLocalPath = null;
+
+        if ($request->hasFile('attachment')) {
+            $file = $request->file('attachment');
+            $mime = $file->getMimeType();
+            
+            if (str_starts_with($mime, 'image/')) {
+                $attachmentType = 'image';
+            } elseif (str_starts_with($mime, 'audio/') || str_starts_with($mime, 'video/')) {
+                $attachmentType = 'audio';
+            } else {
+                return response()->json(['error' => 'Unsupported attachment type'], 422);
+            }
+
+            $path = $file->store('chat-attachments', 'public');
+            $attachmentUrl = rtrim(config('app.url'), '/') . '/storage/' . $path;
+            $attachmentLocalPath = storage_path('app/public/' . $path);
+        }
+
+        $messageText = $request->message ?? '';
+
         // Update analytics
         ChatAnalytic::forToday($config->tenant_id)->incrementStat('total_messages');
 
         // If in human mode, forward to Telegram
         if ($conversation->isHumanMode()) {
-            return $this->handleHumanModeMessage($conversation, $config, $request->message);
+            return $this->handleHumanModeMessage($conversation, $config, $messageText, $attachmentUrl, $attachmentType);
         }
 
         // Process with AI
-        $result = $this->aiService->processMessage($conversation, $config, $request->message);
+        $result = $this->aiService->processMessage($conversation, $config, $messageText, $attachmentUrl, $attachmentType, $attachmentLocalPath);
 
         // If AI wants to trigger human handoff
         if (!empty($result['request_human_handoff'])) {
@@ -321,6 +349,41 @@ class WidgetConversationController extends Controller
         ]);
     }
 
+    /**
+     * Handle immediate disconnect when user leaves/refreshes the page.
+     */
+    public function disconnect(Request $request, string $apiKey): JsonResponse
+    {
+        $config = $this->resolveConfig($apiKey);
+        if (!$config) {
+            return response()->json(['error' => 'Widget not found'], 404);
+        }
+
+        $sessionToken = $request->input('session_token') ?? $request->query('session_token');
+        
+        $conversation = ChatConversation::withoutGlobalScope('tenant')
+            ->where('tenant_id', $config->tenant_id)
+            ->where('session_token', $sessionToken)
+            ->first();
+
+        if ($conversation && $conversation->state === ChatConversation::STATE_HUMAN) {
+            $agentChatId = $conversation->agent_telegram_chat_id;
+            
+            // Revert back to AI
+            $conversation->resumeAI();
+
+            // Notify the agent in Telegram
+            if ($agentChatId) {
+                app(\App\Services\Chat\TelegramBotService::class)->sendMessage(
+                    $agentChatId,
+                    "⚠️ <b>Customer Disconnected</b>\nThe customer has left the chat or refreshed the page. The conversation has been handed back to the AI."
+                );
+            }
+        }
+
+        return response()->json(['success' => true]);
+    }
+
     // ─── Private Helpers ────────────────────────────────────
 
     protected function resolveConfig(string $apiKey): ?WorkspaceChatConfig
@@ -334,39 +397,45 @@ class WidgetConversationController extends Controller
     protected function handleHumanModeMessage(
         ChatConversation $conversation,
         WorkspaceChatConfig $config,
-        string $message
+        string $message,
+        ?string $attachmentUrl = null,
+        ?string $attachmentType = null
     ): JsonResponse {
+        $meta = [];
+        if ($attachmentUrl) {
+            $meta['attachment_url'] = $attachmentUrl;
+            $meta['attachment_type'] = $attachmentType;
+        }
+
         // Store visitor message
         $msg = $conversation->messages()->create([
             'sender_type' => ChatWidgetMessage::SENDER_VISITOR,
             'content' => $message,
             'message_type' => ChatWidgetMessage::TYPE_TEXT,
+            'metadata' => empty($meta) ? null : $meta,
         ]);
 
         $conversation->touchActivity();
 
-        // Broadcast visitor message to dashboard in real-time
-        broadcast(new WidgetMessageSent($conversation->id, [
+        $payload = [
             'id' => $msg->id,
             'content' => $message,
             'sender_type' => 'visitor',
             'message_type' => 'text',
             'created_at' => $msg->created_at->toISOString(),
-        ]));
+            'metadata' => $meta,
+        ];
+
+        // Broadcast visitor message to dashboard in real-time
+        broadcast(new WidgetMessageSent($conversation->id, $payload));
 
         // Forward to Telegram
         if ($conversation->agent_telegram_chat_id) {
-            $this->telegramService->forwardToDealer($conversation, $message);
+            $this->telegramService->forwardToDealer($conversation, $message, $attachmentUrl, $attachmentType);
         }
 
         return response()->json([
-            'message' => [
-                'id' => $msg->id,
-                'content' => $message,
-                'sender_type' => 'visitor',
-                'message_type' => 'text',
-                'created_at' => $msg->created_at->toISOString(),
-            ],
+            'message' => $payload,
             'state' => 'human',
             'info' => 'Message sent to agent.',
         ]);
@@ -449,16 +518,11 @@ class WidgetConversationController extends Controller
 
     /**
      * Broadcast handoff events for real-time dashboard updates.
+     * Note: WidgetStateChanged is NOT broadcast here — it is broadcast
+     * in TelegramWebhookController when an agent actually accepts.
      */
     protected function broadcastHandoff(ChatConversation $conversation, string $previousState): void
     {
-        // State change (widget + dashboard)
-        broadcast(new WidgetStateChanged(
-            $conversation->id,
-            $previousState,
-            ChatConversation::STATE_HUMAN,
-        ));
-
         // Handoff alert (dashboard queue page)
         broadcast(new NewHandoffRequest($conversation->tenant_id, [
             'id' => $conversation->id,

@@ -289,6 +289,7 @@ Route::prefix('widget')->group(function () {
     Route::post('/{apiKey}/lead', [\App\Http\Controllers\Api\WidgetConversationController::class, 'submitLead']);
     Route::get('/{apiKey}/status', [\App\Http\Controllers\Api\WidgetConversationController::class, 'status']);
     Route::get('/{apiKey}/messages', [\App\Http\Controllers\Api\WidgetConversationController::class, 'messages']);
+    Route::post('/{apiKey}/disconnect', [\App\Http\Controllers\Api\WidgetConversationController::class, 'disconnect']);
 });
 
 /*

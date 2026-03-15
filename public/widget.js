@@ -22,305 +22,358 @@
     let pusher = null;
     let wsChannel = null;
     let wsConnected = false;
+    let inactivityTimer = null;
+    let inactivityWarningTimer = null;
 
-    // ─── Styles ───────────────────────────────────────────────
     const styles = `
         :host {
-            --widget-primary: #3b82f6;
-            --widget-primary-dark: #2563eb;
+            --widget-primary: #000000;
+            --widget-primary-dark: #18181b;
+            --widget-gradient: linear-gradient(135deg, #09090b 0%, #27272a 100%);
             --widget-bg: #ffffff;
-            --widget-text: #1f2937;
-            --widget-muted: #64748b;
-            --widget-border: #e2e8f0;
-            --widget-surface: #f8fafc;
+            --widget-text: #09090b;
+            --widget-muted: #71717a;
+            --widget-border: rgba(0, 0, 0, 0.08);
+            --widget-surface: #f4f4f5;
+            --widget-surface-hover: #e4e4e7;
             --widget-success: #10b981;
             --widget-success-dark: #059669;
-            --widget-shadow: 0 20px 60px -15px rgba(0, 0, 0, 0.15);
+            --widget-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.18), 0 12px 24px -8px rgba(0, 0, 0, 0.08), 0 4px 8px -4px rgba(0, 0, 0, 0.04);
             --widget-font: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --spring-easing: cubic-bezier(0.175, 0.885, 0.32, 1.15);
         }
 
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
         * { box-sizing: border-box; font-family: var(--widget-font); margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
 
         /* ── Trigger Bubble ─────────────────────────────────── */
         #ag-trigger {
-            position: fixed; bottom: 20px; right: 20px;
-            width: 64px; height: 64px; border-radius: 50%;
-            background: linear-gradient(135deg, var(--widget-primary), var(--widget-primary-dark));
-            box-shadow: 0 8px 32px rgba(59, 130, 246, 0.35);
+            position: fixed; bottom: 24px; right: 24px;
+            width: 56px; height: 56px; border-radius: 28px;
+            background: var(--widget-gradient);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 4px 8px rgba(0, 0, 0, 0.08);
             display: flex; align-items: center; justify-content: center;
             cursor: pointer; z-index: 2147483647;
-            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s;
-            border: none; outline: none;
+            transition: transform 0.4s var(--spring-easing), box-shadow 0.4s ease;
+            border: 1px solid rgba(255,255,255,0.1); outline: none;
         }
-        #ag-trigger:hover { transform: scale(1.08); box-shadow: 0 12px 40px rgba(59, 130, 246, 0.45); }
-        #ag-trigger svg { color: white; width: 28px; height: 28px; }
+        #ag-trigger:hover { transform: scale(1.06) translateY(-2px); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25); }
+        #ag-trigger svg { color: white; width: 26px; height: 26px; transition: transform 0.4s var(--spring-easing); }
+        #ag-trigger:hover svg { transform: scale(1.08); }
         #ag-trigger .pulse-ring {
             position: absolute; width: 100%; height: 100%; border-radius: 50%;
-            border: 2px solid var(--widget-primary); animation: pulseRing 2s infinite;
+            border: 2px solid rgba(0,0,0,0.2); animation: pulseRing 3s infinite; opacity: 0;
         }
         @keyframes pulseRing {
-            0% { transform: scale(1); opacity: 0.6; }
+            0% { transform: scale(1); opacity: 0.5; }
             100% { transform: scale(1.5); opacity: 0; }
         }
 
         /* ── Chat Window ───────────────────────────────────── */
         #ag-window {
-            position: fixed; bottom: 96px; right: 20px;
-            width: 400px; height: 620px; max-height: calc(100vh - 110px);
-            background: var(--widget-bg); border-radius: 20px;
+            position: fixed; bottom: 96px; right: 24px;
+            width: 380px; height: 680px; max-height: calc(100vh - 120px);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(40px) saturate(150%);
+            -webkit-backdrop-filter: blur(40px) saturate(150%);
+            border-radius: 24px;
             box-shadow: var(--widget-shadow);
             display: none; flex-direction: column; overflow: hidden;
             z-index: 2147483647;
             border: 1px solid rgba(0,0,0,0.06);
-            animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-            transition: border-radius 0.35s, background 0.35s;
+            animation: slideUp 0.5s var(--spring-easing);
+            transform-origin: bottom right;
         }
         #ag-window.expanded {
             width: 100vw; height: 100vh; max-height: 100vh;
             bottom: 0; right: 0; border-radius: 0;
         }
         @keyframes slideUp {
-            from { transform: translateY(24px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
+            from { transform: translateY(20px) scale(0.95); opacity: 0; }
+            to { transform: translateY(0) scale(1); opacity: 1; }
         }
 
         /* ── Resize Handle (top-left corner) ───────────────── */
         .ag-resize-handle {
             position: absolute; top: 0; left: 0;
-            width: 18px; height: 18px;
+            width: 20px; height: 20px;
             cursor: nwse-resize; z-index: 10;
-            background: transparent;
         }
         .ag-resize-handle::after {
-            content: '';
-            position: absolute; top: 4px; left: 4px;
-            width: 8px; height: 8px;
-            border-top: 2px solid rgba(255,255,255,0.5);
-            border-left: 2px solid rgba(255,255,255,0.5);
-            border-radius: 2px 0 0 0;
-            transition: border-color 0.2s;
+            content: ''; position: absolute; top: 6px; left: 6px;
+            width: 6px; height: 6px;
+            border-top: 2px solid rgba(0,0,0,0.15);
+            border-left: 2px solid rgba(0,0,0,0.15);
+            border-radius: 2px 0 0 0; transition: border-color 0.2s;
         }
-        .ag-resize-handle:hover::after {
-            border-color: rgba(255,255,255,0.9);
-        }
+        .ag-resize-handle:hover::after { border-color: rgba(0,0,0,0.3); }
 
         /* ── Header ────────────────────────────────────────── */
         .ag-header {
-            padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;
-            background: linear-gradient(135deg, var(--widget-primary), var(--widget-primary-dark));
-            color: white; position: relative; overflow: hidden;
-            transition: background 0.6s ease;
+            padding: 20px 24px 16px; display: flex; justify-content: space-between; align-items: center;
+            background: transparent;
+            border-bottom: 1px solid rgba(0,0,0,0.04);
+            color: var(--widget-text); position: relative; overflow: hidden;
+            transition: background 0.6s ease; z-index: 10;
         }
-        .ag-header.human-mode {
-            background: linear-gradient(135deg, var(--widget-success), var(--widget-success-dark));
-        }
-        .ag-header.connecting-mode {
-            background: linear-gradient(135deg, var(--widget-primary), #6366f1, var(--widget-primary));
-            background-size: 200% 200%;
-            animation: gradientShift 2s ease infinite;
-        }
-        @keyframes gradientShift {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
+        .ag-header.human-mode { background: rgba(236, 253, 245, 0.5); }
+        .ag-header.connecting-mode { background: rgba(244, 244, 245, 0.5); }
         .ag-header-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
         .ag-header-avatar {
-            width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            background: rgba(255,255,255,0.2); flex-shrink: 0; font-size: 18px;
+            width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+            background: var(--widget-gradient); flex-shrink: 0; font-size: 18px;
+            box-shadow: inset 0 2px 4px rgba(255,255,255,0.2), 0 2px 8px rgba(0,0,0,0.1); color: white;
+            border: 1px solid rgba(0,0,0,0.1); 
         }
-        .ag-header-info { min-width: 0; }
-        .ag-header-name { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+        .ag-header.human-mode .ag-header-avatar {
+            background: linear-gradient(135deg, #10b981, #059669);
+            box-shadow: inset 0 2px 4px rgba(255,255,255,0.2), 0 2px 8px rgba(16, 185, 129, 0.2);
+        }
+        .ag-header-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+        .ag-header-name { font-weight: 700; font-size: 15px; letter-spacing: -0.02em; color: var(--widget-text); }
         .ag-header-status {
-            font-size: 11px; opacity: 0.85; display: flex; align-items: center; gap: 6px; margin-top: 2px;
+            font-size: 11.5px; font-weight: 500; color: var(--widget-muted); display: flex; align-items: center; gap: 6px;
         }
         .status-dot {
-            width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+            width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
         }
-        .status-dot.ai { background: rgba(255,255,255,0.6); }
-        .status-dot.live { background: #4ade80; animation: pulseDot 1.5s infinite; }
-        .status-dot.connecting { background: #fbbf24; animation: pulseDot 0.8s infinite; }
+        .status-dot.ai { background: var(--widget-text); }
+        .status-dot.live { background: var(--widget-success); box-shadow: 0 0 0 2px rgba(16,185,129,0.2); animation: pulseDot 2s infinite; }
+        .status-dot.connecting { background: #f59e0b; animation: pulseDot 1s infinite; }
         @keyframes pulseDot {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(0.8); }
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
         .verified-badge {
-            display: inline-flex; align-items: center; gap: 3px;
-            background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 10px;
-            font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+            display: inline-flex; align-items: center; gap: 4px;
+            background: var(--widget-surface); padding: 2px 6px; border-radius: 6px;
+            font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+            color: var(--widget-text); border: 1px solid rgba(0,0,0,0.06);
         }
-        .ag-header-actions { display: flex; gap: 6px; }
+        .ag-header-actions { display: flex; gap: 2px; }
         .ag-header-btn {
-            width: 32px; height: 32px; border-radius: 50%; border: none; background: rgba(255,255,255,0.15);
-            color: white; cursor: pointer; display: flex; align-items: center; justify-content: center;
-            transition: background 0.2s;
+            width: 32px; height: 32px; border-radius: 8px; border: none; background: transparent;
+            color: var(--widget-muted); cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
         }
-        .ag-header-btn:hover { background: rgba(255,255,255,0.25); }
-        .ag-header-btn svg { width: 16px; height: 16px; }
+        .ag-header-btn:hover { background: var(--widget-surface); color: var(--widget-text); }
+        .ag-header-btn svg { width: 16px; height: 16px; stroke-width: 2.2; }
 
         /* ── Welcome Screen ────────────────────────────────── */
         .ag-welcome {
-            flex: 1; display: flex; flex-direction: column; padding: 32px 24px; background: var(--widget-surface);
-            overflow-y: auto;
+            flex: 1; display: flex; flex-direction: column; padding: 40px 32px; background: transparent;
+            overflow-y: auto; justify-content: center;
         }
-        .ag-welcome-hero {
-            text-align: center; margin-bottom: 28px;
-        }
+        .ag-welcome-hero { text-align: center; margin-bottom: 36px; }
         .ag-welcome-icon {
-            width: 64px; height: 64px; border-radius: 20px; margin: 0 auto 16px;
-            background: linear-gradient(135deg, var(--widget-primary), var(--widget-primary-dark));
+            width: 64px; height: 64px; border-radius: 20px; margin: 0 auto 24px;
+            background: var(--widget-gradient);
             display: flex; align-items: center; justify-content: center;
-            box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15), inset 0 2px 4px rgba(255,255,255,0.2);
+            transform: rotate(-4deg);
+            border: 1px solid rgba(0,0,0,0.1);
         }
-        .ag-welcome-icon svg { color: white; width: 32px; height: 32px; }
+        .ag-welcome-icon svg { color: white; width: 32px; height: 32px; transform: rotate(4deg); stroke-width: 2; }
         .ag-welcome-title {
-            font-size: 22px; font-weight: 800; color: var(--widget-text);
-            letter-spacing: -0.02em; margin-bottom: 8px;
+            font-size: 24px; font-weight: 800; color: var(--widget-text);
+            letter-spacing: -0.04em; margin-bottom: 8px; line-height: 1.2;
         }
-        .ag-welcome-sub {
-            font-size: 14px; color: var(--widget-muted); line-height: 1.5;
-        }
-        .ag-form { display: flex; flex-direction: column; gap: 14px; }
-        .ag-form-field { display: flex; flex-direction: column; gap: 4px; }
-        .ag-form-label { font-size: 12px; font-weight: 600; color: var(--widget-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        .ag-welcome-sub { font-size: 14px; color: var(--widget-muted); line-height: 1.5; font-weight: 500; }
+        .ag-form { display: flex; flex-direction: column; gap: 16px; }
+        .ag-form-field { display: flex; flex-direction: column; gap: 6px; }
+        .ag-form-label { font-size: 11px; font-weight: 700; color: var(--widget-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-left: 2px; }
         .ag-form-input {
-            padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--widget-border);
-            font-size: 14px; outline: none; transition: border-color 0.2s, box-shadow 0.2s;
-            background: white;
+            padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.08);
+            font-size: 14px; outline: none; transition: all 0.2s;
+            background: rgba(255,255,255,0.8); color: var(--widget-text);
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.01);
+            font-weight: 500;
         }
         .ag-form-input:focus {
-            border-color: var(--widget-primary);
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            border-color: rgba(0,0,0,0.2); background: #ffffff;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.04), inset 0 2px 4px rgba(0,0,0,0.01);
         }
-        .ag-form-input::placeholder { color: #cbd5e1; }
+        .ag-form-input::placeholder { color: #a1a1aa; font-weight: 400; }
         .ag-btn-primary {
-            padding: 14px; border-radius: 14px; border: none; font-size: 14px; font-weight: 700;
-            background: linear-gradient(135deg, var(--widget-primary), var(--widget-primary-dark));
-            color: white; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
-            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
-            margin-top: 6px;
+            padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); font-size: 14px; font-weight: 600;
+            background: var(--widget-gradient); letter-spacing: 0.01em;
+            color: white; cursor: pointer; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-top: 8px; position: relative; overflow: hidden;
         }
-        .ag-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4); }
-        .ag-btn-primary:active { transform: translateY(0); }
+        .ag-btn-primary::after {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 50%;
+            background: linear-gradient(rgba(255,255,255,0.1), transparent);
+            border-radius: 12px 12px 0 0;
+        }
+        .ag-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(0,0,0,0.15); }
+        .ag-btn-primary:active { transform: translateY(1px); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .ag-btn-skip {
-            padding: 10px; border: none; background: none; font-size: 13px; font-weight: 600;
+            padding: 12px; border: none; background: none; font-size: 13px; font-weight: 600;
             color: var(--widget-muted); cursor: pointer; text-align: center; transition: color 0.2s;
         }
-        .ag-btn-skip:hover { color: var(--widget-primary); }
+        .ag-btn-skip:hover { color: var(--widget-text); }
 
         /* ── Messages ──────────────────────────────────────── */
         .ag-messages {
-            flex: 1; padding: 20px; overflow-y: auto; background: var(--widget-surface);
-            display: flex; flex-direction: column; gap: 12px;
-            scroll-behavior: smooth;
+            flex: 1; padding: 24px 20px; overflow-y: auto; background: transparent;
+            display: flex; flex-direction: column; gap: 16px; scroll-behavior: smooth;
         }
-        .msg { display: flex; flex-direction: column; animation: msgIn 0.25s ease-out; }
+        .msg { display: flex; flex-direction: column; animation: msgIn 0.4s var(--spring-easing) forwards; }
         .msg.user { align-items: flex-end; }
         .msg.bot { align-items: flex-start; }
         .msg.agent { align-items: flex-start; }
         .msg.system { align-items: center; }
         @keyframes msgIn {
-            from { transform: translateY(8px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
+            from { transform: translateY(12px) scale(0.96); opacity: 0; }
+            to { transform: translateY(0) scale(1); opacity: 1; }
         }
         .msg-bubble {
-            padding: 12px 16px; border-radius: 20px; max-width: 82%;
-            font-size: 14px; line-height: 1.55; word-break: break-word;
+            padding: 12px 16px; max-width: 85%;
+            font-size: 14px; line-height: 1.5; word-break: break-word;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            font-weight: 400; letter-spacing: -0.01em;
         }
         .msg.user .msg-bubble {
-            background: linear-gradient(135deg, var(--widget-primary), var(--widget-primary-dark));
-            color: white; border-bottom-right-radius: 6px;
+            background: var(--widget-text); color: white;
+            border-radius: 18px 18px 4px 18px;
         }
         .msg.bot .msg-bubble {
-            background: white; color: var(--widget-text);
-            border-bottom-left-radius: 6px;
-            border: 1px solid var(--widget-border);
+            background: var(--widget-surface); color: var(--widget-text);
+            border-radius: 18px 18px 18px 4px; border: 1px solid rgba(0,0,0,0.03);
         }
         .msg.agent .msg-bubble {
-            background: white; color: var(--widget-text);
-            border-bottom-left-radius: 6px;
-            border: 2px solid var(--widget-success);
+            background: #f0fdf4; color: #166534;
+            border-radius: 18px 18px 18px 4px; border: 1px solid #dcfce7;
         }
         .msg-sender {
-            font-size: 11px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;
+            font-size: 11px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 4px; color: var(--widget-muted);
+            margin-left: 4px; margin-right: 4px;
         }
         .msg-sender.agent-sender { color: var(--widget-success-dark); }
         .msg.system .msg-bubble {
-            background: transparent; color: var(--widget-muted); font-size: 12px;
-            font-style: italic; max-width: 90%; text-align: center;
+            background: transparent; color: var(--widget-muted); font-size: 11px; font-weight: 500;
+            max-width: 90%; text-align: center; box-shadow: none; padding: 4px 12px;
         }
+
+        /* ── Inactivity Popup ──────────────────────────────── */
+        .ag-inactivity-popup {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255, 255, 255, 0.4); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            z-index: 100; display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.4s ease;
+        }
+        .ag-inactivity-popup.active { opacity: 1; pointer-events: auto; }
+        .ag-inactivity-content {
+            background: rgba(255,255,255,0.95); padding: 32px 24px; border-radius: 20px; width: 85%;
+            text-align: center; box-shadow: 0 24px 48px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.05);
+            transform: scale(0.95) translateY(10px); transition: all 0.5s var(--spring-easing);
+        }
+        .ag-inactivity-popup.active .ag-inactivity-content { transform: scale(1) translateY(0); }
+        .ag-inactivity-title { font-size: 16px; font-weight: 800; color: var(--widget-text); margin-bottom: 6px; letter-spacing: -0.02em; }
+        .ag-inactivity-text { font-size: 13px; color: var(--widget-muted); margin-bottom: 20px; line-height: 1.5; font-weight: 500; }
+        .ag-inactivity-countdown { font-size: 36px; font-weight: 800; color: var(--widget-text); margin-bottom: 24px; font-variant-numeric: tabular-nums; }
+        .ag-btn-keep-open {
+            width: 100%; padding: 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);
+            background: var(--widget-gradient); color: white; font-weight: 600; font-size: 14px;
+            cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .ag-btn-keep-open:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(0,0,0,0.15); }
 
         /* ── Connecting Loader ─────────────────────────────── */
         .connecting-loader {
-            display: flex; flex-direction: column; align-items: center; gap: 14px;
-            padding: 24px; animation: msgIn 0.3s ease-out;
+            display: flex; flex-direction: column; align-items: center; gap: 12px;
+            padding: 32px; animation: msgIn 0.4s var(--spring-easing);
         }
-        .dots-loader { display: flex; gap: 6px; }
+        .dots-loader { display: flex; gap: 4px; }
         .dots-loader span {
-            width: 10px; height: 10px; border-radius: 50%;
-            background: var(--widget-primary); opacity: 0.3;
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--widget-text); opacity: 0.2;
             animation: dotBounce 1.4s infinite ease-in-out both;
         }
         .dots-loader span:nth-child(1) { animation-delay: -0.32s; }
         .dots-loader span:nth-child(2) { animation-delay: -0.16s; }
         @keyframes dotBounce {
-            0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+            0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
             40% { opacity: 1; transform: scale(1.2); }
         }
-        .connecting-text { font-size: 13px; color: var(--widget-muted); font-weight: 600; }
+        .connecting-text { font-size: 12px; color: var(--widget-muted); font-weight: 600; letter-spacing: 0.02em; }
 
         /* ── Vehicle Cards ─────────────────────────────────── */
-        .cards-container { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; width: 100%; }
+        .cards-container { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; width: 100%; }
         .vehicle-card {
-            background: white; border-radius: 14px; border: 1px solid var(--widget-border);
-            overflow: hidden; transition: transform 0.2s, box-shadow 0.2s;
-            max-width: 300px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            background: white; border-radius: 16px; border: 1px solid rgba(0,0,0,0.04);
+            overflow: hidden; transition: all 0.3s ease;
+            max-width: 300px; box-shadow: 0 2px 8px rgba(0,0,0,0.02);
         }
-        .vehicle-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
-        .vehicle-image { width: 100%; height: 140px; object-fit: cover; background: #e2e8f0; }
-        .vehicle-info { padding: 12px; }
-        .vehicle-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; color: #1e293b; }
-        .vehicle-meta { font-size: 13px; color: var(--widget-muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
-        .vehicle-price { font-weight: 800; color: var(--widget-primary); font-size: 16px; }
-        .vehicle-actions { display: flex; flex-direction: column; gap: 6px; padding: 0 12px 12px; }
+        .vehicle-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); border-color: rgba(0,0,0,0.08); }
+        .vehicle-image { width: 100%; height: 160px; object-fit: cover; background: var(--widget-surface); }
+        .vehicle-info { padding: 14px 16px; }
+        .vehicle-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; color: var(--widget-text); letter-spacing: -0.01em; }
+        .vehicle-meta { font-size: 12px; color: var(--widget-muted); margin-bottom: 12px; display: flex; justify-content: space-between; font-weight: 500;}
+        .vehicle-price { font-weight: 800; color: var(--widget-text); font-size: 16px; }
+        .vehicle-actions { display: flex; flex-direction: column; gap: 8px; padding: 0 16px 16px; }
         .btn-action {
-            width: 100%; padding: 8px; border-radius: 8px; font-size: 12px; font-weight: 600;
-            cursor: pointer; text-align: center; border: 1.5px solid var(--widget-border);
-            background: var(--widget-surface); color: #475569; transition: all 0.2s;
+            width: 100%; padding: 10px; border-radius: 10px; font-size: 13px; font-weight: 600;
+            cursor: pointer; text-align: center; border: 1px solid rgba(0,0,0,0.06);
+            background: white; color: var(--widget-text); transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.02);
         }
-        .btn-action:hover { background: var(--widget-primary); color: white; border-color: var(--widget-primary); }
+        .btn-action:hover { background: var(--widget-surface); border-color: rgba(0,0,0,0.1); }
 
         /* ── Input Bar ─────────────────────────────────────── */
         .ag-input-bar {
-            padding: 14px 16px; border-top: 1px solid var(--widget-border);
-            display: flex; gap: 10px; background: white; align-items: center;
+            padding: 16px 20px 20px; border-top: 1px solid rgba(0,0,0,0.04);
+            display: flex; gap: 12px; background: transparent;
+            align-items: center; flex-direction: column; z-index: 10;
         }
-        .ag-input-bar input {
-            flex: 1; padding: 12px 16px; border: 1.5px solid var(--widget-border);
-            border-radius: 24px; outline: none; font-size: 14px;
-            transition: border-color 0.2s, box-shadow 0.2s; background: var(--widget-surface);
+        .ag-input-row { display: flex; gap: 8px; width: 100%; align-items: center; position: relative; }
+        .ag-input-bar input[type="text"] {
+            flex: 1; padding: 12px 16px; border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 20px; outline: none; font-size: 14px; font-weight: 400;
+            transition: all 0.3s ease; background: rgba(255,255,255,0.7); color: var(--widget-text);
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.01);
         }
-        .ag-input-bar input:focus {
-            border-color: var(--widget-primary); box-shadow: 0 0 0 3px rgba(59,130,246,0.08);
-            background: white;
+        .ag-input-bar input[type="text"]:focus {
+            background: #ffffff; border-color: rgba(0,0,0,0.15);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.04);
         }
+        .ag-input-bar input[type="text"]::placeholder { color: #a1a1aa; }
+        .ag-action-btn {
+            width: 36px; height: 36px; border-radius: 18px; border: none; cursor: pointer;
+            background: rgba(255,255,255,0.7); color: var(--widget-muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s;
+            border: 1px solid rgba(0,0,0,0.06); box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .ag-action-btn:hover { background: #ffffff; color: var(--widget-text); border-color: rgba(0,0,0,0.1); }
+        .ag-action-btn svg { width: 18px; height: 18px; stroke-width: 1.8; }
+        .ag-action-btn.recording { color: white; background: #ef4444; border-color: #ef4444; animation: pulseRecord 1.5s infinite; }
+        @keyframes pulseRecord { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
         .ag-input-bar button.send-btn {
-            width: 44px; height: 44px; border-radius: 50%; border: none;
-            background: linear-gradient(135deg, var(--widget-primary), var(--widget-primary-dark));
+            width: 38px; height: 38px; border-radius: 19px; border: none;
+            background: var(--widget-text);
             color: white; cursor: pointer; display: flex; align-items: center; justify-content: center;
-            flex-shrink: 0; transition: transform 0.15s, box-shadow 0.15s;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+            flex-shrink: 0; transition: all 0.3s var(--spring-easing); box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
-        .ag-input-bar button.send-btn:hover { transform: scale(1.05); box-shadow: 0 6px 16px rgba(59,130,246,0.4); }
-        .ag-input-bar button.send-btn svg { width: 20px; height: 20px; }
+        .ag-input-bar button.send-btn[disabled] { opacity: 0.5; pointer-events: none; }
+        .ag-input-bar button.send-btn:hover { transform: scale(1.05); background: #27272a; }
+        .ag-input-bar button.send-btn svg { width: 16px; height: 16px; stroke-width: 2.2; }
+        .ag-attachments { display: none; width: 100%; padding: 8px 12px; border-radius: 16px; background: rgba(255,255,255,0.8); align-items: center; justify-content: space-between; font-size: 13px; color: var(--widget-text); font-weight: 500; border: 1px solid rgba(0,0,0,0.06); box-shadow: 0 2px 8px rgba(0,0,0,0.02); margin-bottom: 4px; }
+        .ag-attachments div { display: flex; align-items: center; gap: 10px; }
+        .ag-attachments img { height: 40px; width: 40px; border-radius: 8px; object-fit: cover; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: 1px solid rgba(0,0,0,0.04); }
+        .ag-attachments-close { cursor: pointer; color: var(--widget-muted); padding: 4px; border-radius: 50%; transition: all 0.2s; display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; }
+        .ag-attachments-close:hover { background: rgba(0,0,0,0.06); color: var(--widget-text); }
 
         /* ── Powered By / Footer ───────────────────────────── */
         .ag-powered {
-            text-align: center; padding: 6px; font-size: 10px; color: #94a3b8;
-            background: white; border-top: 1px solid rgba(0,0,0,0.03);
+            text-align: center; padding: 0 0 12px; font-size: 10px; color: #a1a1aa; font-weight: 500;
+            background: transparent; border-top: none; letter-spacing: 0.02em;
         }
+        .ag-powered a { color: #71717a; text-decoration: none; transition: color 0.2s; }
+        .ag-powered a:hover { color: var(--widget-text); }
     `;
 
     // ─── SVG Icons ────────────────────────────────────────────
@@ -332,6 +385,9 @@
         collapse: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" /></svg>',
         human: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>',
         check: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" style="width:10px;height:10px"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>',
+        camera: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>',
+        mic: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" /></svg>',
+        stop: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 7.5A2.25 2.25 0 0 1 7.5 5.25h9a2.25 2.25 0 0 1 2.25 2.25v9a2.25 2.25 0 0 1-2.25 2.25h-9a2.25 2.25 0 0 1-2.25-2.25v-9Z" /></svg>',
         bot: '🤖',
         wave: '👋',
     };
@@ -418,14 +474,29 @@
             <div id="ag-chat-area" style="display:none; flex:1; flex-direction:column; overflow:hidden;">
                 <div id="ag-messages" class="ag-messages"></div>
                 <div class="ag-input-bar">
-                    <input type="text" id="ag-input" placeholder="Type a message...">
-                    <button class="send-btn" id="btn-send">${ICONS.send}</button>
+                    <div class="ag-attachments" id="ag-attachments-preview"></div>
+                    <div class="ag-input-row">
+                        <input type="file" id="ag-file-upload" accept="image/*" style="display:none;">
+                        <button class="ag-action-btn" id="btn-camera" title="Upload Image">${ICONS.camera}</button>
+                        <button class="ag-action-btn" id="btn-mic" title="Record Voice Note">${ICONS.mic}</button>
+                        <input type="text" id="ag-input" placeholder="Type a message...">
+                        <button class="send-btn" id="btn-send">${ICONS.send}</button>
+                    </div>
                 </div>
                 <div class="ag-powered">Powered by Antigravity AI</div>
             </div>
 
             <!-- Resize Handle (top-left corner for dragging) -->
             <div class="ag-resize-handle" id="ag-resize-handle"></div>
+            
+            <div class="ag-inactivity-popup" id="ag-inactivity-popup">
+                <div class="ag-inactivity-content">
+                    <div class="ag-inactivity-title">Are you still there?</div>
+                    <div class="ag-inactivity-text">This chat will automatically close due to inactivity in:</div>
+                    <div class="ag-inactivity-countdown" id="ag-inactivity-countdown">30s</div>
+                    <button class="ag-btn-keep-open" id="btn-keep-open">Keep Chat Open</button>
+                </div>
+            </div>
         `;
     }
 
@@ -434,13 +505,106 @@
         $('btn-expand').onclick = () => toggleExpand();
         $('btn-human').onclick = () => requestHuman();
         $('btn-send').onclick = () => sendMessage();
+        $('btn-camera').onclick = () => $('ag-file-upload').click();
+        $('ag-file-upload').onchange = (e) => handleAttachment(e.target.files[0]);
+        $('btn-mic').onclick = () => toggleRecording();
         $('btn-skip').onclick = () => skipToChat();
         $('ag-input').onkeypress = (e) => { if (e.key === 'Enter') sendMessage(); };
         $('ag-lead-form').onsubmit = (e) => { e.preventDefault(); submitLeadAndStart(); };
+        $('btn-keep-open').onclick = () => {
+            const popup = $('ag-inactivity-popup');
+            if (popup) popup.classList.remove('active');
+            resetInactivityTimer();
+        };
         initResizeHandle();
     }
 
     function $(id) { return shadow.getElementById(id); }
+
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let currentAttachment = null;
+    let recordingTimer = null;
+    let recordingSeconds = 0;
+
+    function handleAttachment(file) {
+        if (!file) return;
+        currentAttachment = file;
+        const preview = $('ag-attachments-preview');
+        preview.style.display = 'flex';
+        
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                preview.innerHTML = `<div><img src="${e.target.result}"> <span>${file.name}</span></div><div class="ag-attachments-close" id="btn-clear-attach">✖</div>`;
+                $('btn-clear-attach').onclick = clearAttachment;
+            };
+            reader.readAsDataURL(file);
+        } else if (file.type.startsWith('audio/')) {
+            preview.innerHTML = `<div>🎤 Voice Note attached</div><div class="ag-attachments-close" id="btn-clear-attach">✖</div>`;
+            $('btn-clear-attach').onclick = clearAttachment;
+        }
+    }
+
+    function clearAttachment() {
+        currentAttachment = null;
+        $('ag-file-upload').value = '';
+        $('ag-attachments-preview').style.display = 'none';
+        $('ag-attachments-preview').innerHTML = '';
+    }
+
+    async function toggleRecording() {
+        const micBtn = $('btn-mic');
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+            micBtn.classList.remove('recording');
+            micBtn.innerHTML = ICONS.mic;
+            clearInterval(recordingTimer);
+            return;
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = e => {
+                if (e.data.size > 0) audioChunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                const file = new File([audioBlob], 'voice-note.webm', { type: 'audio/webm' });
+                handleAttachment(file);
+                stream.getTracks().forEach(track => track.stop()); // Stop mic
+            };
+
+            mediaRecorder.start();
+            micBtn.classList.add('recording');
+            micBtn.innerHTML = ICONS.stop;
+            recordingSeconds = 0;
+            
+            $('ag-attachments-preview').style.display = 'flex';
+            $('ag-attachments-preview').innerHTML = `<div>Recording... <span id="record-time">0:00</span></div>`;
+            
+            recordingTimer = setInterval(() => {
+                recordingSeconds++;
+                const mins = Math.floor(recordingSeconds / 60);
+                const secs = (recordingSeconds % 60).toString().padStart(2, '0');
+                const timeStr = `${mins}:${secs}`;
+                const timeEl = $('record-time');
+                if (timeEl) timeEl.textContent = timeStr;
+
+                if (recordingSeconds >= 60) {
+                    toggleRecording(); // Auto stop at 60s
+                }
+            }, 1000);
+
+        } catch (err) {
+            console.error('Microphone access denied', err);
+            alert('Please allow microphone access to record voice notes.');
+        }
+    }
 
     // ─── Config ───────────────────────────────────────────────
     async function fetchConfig() {
@@ -532,18 +696,42 @@
     async function sendMessage() {
         const input = $('ag-input');
         const text = input.value.trim();
-        if (!text || !apiKey || !sessionToken) return;
+        const hasAttachment = currentAttachment !== null;
 
-        appendMessage('user', { content: text });
+        if (!text && !hasAttachment) return;
+        if (!apiKey || !sessionToken) return;
+
+        // Reset inactivity timer on any message
+        resetInactivityTimer();
+
+        const renderedContent = text || (currentAttachment?.type.startsWith('audio') ? '🎤 Voice Note' : '📸 Image attached');
+        appendMessage('user', { content: renderedContent, attachment: currentAttachment });
+        
         input.value = '';
+        const attachmentToSend = currentAttachment;
+        clearAttachment();
         showTypingIndicator();
 
         try {
-            const res = await fetch(`${baseUrl}/widget/${apiKey}/message`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_token: sessionToken, message: text })
-            });
+            let res;
+            if (attachmentToSend) {
+                const formData = new FormData();
+                formData.append('session_token', sessionToken);
+                if (text) formData.append('message', text);
+                formData.append('attachment', attachmentToSend);
+
+                res = await fetch(`${baseUrl}/widget/${apiKey}/message`, {
+                    method: 'POST',
+                    body: formData
+                });
+            } else {
+                res = await fetch(`${baseUrl}/widget/${apiKey}/message`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_token: sessionToken, message: text })
+                });
+            }
+
             removeTypingIndicator();
             const data = await res.json();
 
@@ -562,7 +750,9 @@
                     appendMessage(sender, {
                         content: data.message.content,
                         vehicle_cards: data.vehicle_cards,
-                        agent_name: data.agent_name
+                        agent_name: data.agent_name,
+                        metadata: data.message.metadata,
+                        attachment: data.message.attachment
                     });
                 }
             } else if (data.response) {
@@ -614,11 +804,11 @@
                 appendMessage('system', { content: data.message.content });
             }
 
-            // If the backend already transitioned to human, handle it directly
-            // (in case the WS event was missed due to timing)
-            if (data.state === 'human' && chatState !== 'human') {
+            // If the backend already transitioned to human AND an agent has accepted
+            // (agent_name will be a real name when accepted, not default 'Support Agent')
+            if (data.state === 'human' && data.agent_name && data.agent_name !== 'Support Agent' && chatState !== 'human') {
                 removeConnectingLoader();
-                agentName = data.agent_name || 'Support Agent';
+                agentName = data.agent_name;
                 setChatState('human');
                 appendMessage('system', { content: `✅ ${agentName} has joined the chat!` });
             }
@@ -720,11 +910,13 @@
 
             channel.bind('state.changed', (data) => {
                 const newState = data.new_state;
-                if (newState === 'human' && chatState !== 'human') {
+                if (newState === 'human' && data.agent_name && chatState !== 'human') {
+                    // Agent has actually accepted
                     removeConnectingLoader();
-                    agentName = data.agent_name || 'Support Agent';
+                    agentName = data.agent_name;
                     setChatState('human');
                     appendMessage('system', { content: `✅ ${agentName} has joined the chat!` });
+                    resetInactivityTimer(); // Start the timer when handoff is successful
                 } else if (newState === 'ai' && chatState === 'human') {
                     setChatState('ai');
                     appendMessage('system', { content: '🤖 The support agent has ended the session. I\'m your AI assistant — how can I help?' });
@@ -752,14 +944,16 @@
                 const res = await fetch(`${baseUrl}/widget/${apiKey}/status?session_token=${sessionToken}`);
                 const data = await res.json();
 
-                if (data.state === 'human') {
+                if (data.state === 'human' && data.agent_name) {
+                    // Agent has actually accepted — show joined message
                     clearInterval(statusPollInterval);
                     statusPollInterval = null;
                     removeConnectingLoader();
-                    agentName = data.agent_name || 'Support Agent';
+                    agentName = data.agent_name;
                     setChatState('human');
                     appendMessage('system', { content: `✅ ${agentName} has joined the chat!` });
                     startMessagePolling();
+                    resetInactivityTimer(); // Start timer on fallback connection
                 } else if (data.state === 'ai' && chatState === 'human') {
                     clearInterval(statusPollInterval);
                     setChatState('ai');
@@ -896,6 +1090,44 @@
             const bubble = document.createElement('div');
             bubble.className = 'msg-bubble';
             bubble.textContent = data.content;
+
+            // Render local attachment from user
+            if (data.attachment && data.attachment instanceof File) {
+                if (data.attachment.type.startsWith('image/')) {
+                    const img = document.createElement('img');
+                    img.src = URL.createObjectURL(data.attachment);
+                    img.style.maxWidth = '100%';
+                    img.style.borderRadius = '8px';
+                    img.style.marginTop = '8px';
+                    bubble.appendChild(img);
+                } else if (data.attachment.type.startsWith('audio/')) {
+                    const audio = document.createElement('audio');
+                    audio.src = URL.createObjectURL(data.attachment);
+                    audio.controls = true;
+                    audio.style.marginTop = '8px';
+                    audio.style.maxWidth = '100%';
+                    bubble.appendChild(audio);
+                }
+            } 
+            // Render remote attachment from backend metadata
+            else if (data.metadata?.attachment_url) {
+                if (data.metadata.attachment_type === 'image') {
+                    const img = document.createElement('img');
+                    img.src = data.metadata.attachment_url;
+                    img.style.maxWidth = '100%';
+                    img.style.borderRadius = '8px';
+                    img.style.marginTop = '8px';
+                    bubble.appendChild(img);
+                } else if (data.metadata.attachment_type === 'audio' || data.metadata.attachment_type === 'video') {
+                    const audio = document.createElement('audio');
+                    audio.src = data.metadata.attachment_url;
+                    audio.controls = true;
+                    audio.style.marginTop = '8px';
+                    audio.style.maxWidth = '100%';
+                    bubble.appendChild(audio);
+                }
+            }
+
             wrapper.appendChild(bubble);
         }
 
@@ -1017,6 +1249,80 @@
             win.style.maxHeight = savedH;
         }
     }
+
+    // ─── Inactivity & Disconnect Handling ───────────────────
+    let countdownInterval = null;
+
+    function resetInactivityTimer() {
+        if (inactivityTimer) clearTimeout(inactivityTimer);
+        if (countdownInterval) clearInterval(countdownInterval);
+        
+        inactivityWarningShown = false;
+        
+        const popup = $('ag-inactivity-popup');
+        if (popup) popup.classList.remove('active');
+
+        // Only enforce inactivity rules during human chat mode
+        if (chatState !== 'human') return;
+
+        // Warn after 90 seconds (1 min 30s) of inactivity format
+        inactivityTimer = setTimeout(() => {
+            if (chatState === 'human' && !inactivityWarningShown) {
+                inactivityWarningShown = true;
+                
+                if (popup) {
+                    popup.classList.add('active');
+                    let timeLeft = 30;
+                    const countdownEl = $('ag-inactivity-countdown');
+                    if (countdownEl) countdownEl.textContent = `${timeLeft}s`;
+                    
+                    countdownInterval = setInterval(() => {
+                        timeLeft--;
+                        if (countdownEl) countdownEl.textContent = `${timeLeft}s`;
+                        
+                        if (timeLeft <= 0) {
+                            clearInterval(countdownInterval);
+                            popup.classList.remove('active');
+                            if (chatState === 'human') {
+                                disconnectConversation();
+                            }
+                        }
+                    }, 1000);
+                }
+            }
+        }, 90000); // 90 seconds
+    }
+
+    function disconnectConversation() {
+        if (chatState !== 'human' || !apiKey || !sessionToken) return;
+        
+        // Use sendBeacon for reliable delivery when navigating away/closing
+        const url = `${baseUrl}/widget/${apiKey}/disconnect`;
+        const data = new FormData();
+        data.append('session_token', sessionToken);
+        navigator.sendBeacon(url, data);
+        
+        setChatState('ai');
+        appendMessage('system', { content: 'This conversation has been closed due to inactivity or navigation. Feel free to start a new one!' });
+    }
+
+    // Handle page unload/refresh
+    window.addEventListener('beforeunload', () => {
+        if (chatState === 'human') {
+            disconnectConversation();
+        }
+    });
+
+    // Handle visibility changes (optional, but good for mobile)
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden' && chatState === 'human') {
+            // We could optionally disconnect here, but usually beforeunload is enough.
+            // Keeping this listener in case we want to pause timers in the future.
+        } else if (document.visibilityState === 'visible' && chatState === 'human') {
+            // Wake back up, reset the inactivity timer
+            resetInactivityTimer();
+        }
+    });
 
     // ─── Auto-initialize ──────────────────────────────────────
     if (document.readyState === 'loading') {

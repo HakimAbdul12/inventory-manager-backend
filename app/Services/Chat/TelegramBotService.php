@@ -54,6 +54,76 @@ class TelegramBotService
     }
 
     /**
+     * Send a photo to a Telegram chat.
+     */
+    public function sendPhoto(string $chatId, string $photoUrl, string $caption = '', array $options = []): ?array
+    {
+        try {
+            $payload = [
+                'chat_id' => $chatId,
+                'photo' => $photoUrl,
+                'caption' => $caption,
+                'parse_mode' => $options['parse_mode'] ?? 'HTML',
+            ];
+
+            if (!empty($options['reply_markup'])) {
+                $payload['reply_markup'] = json_encode($options['reply_markup']);
+            }
+
+            $response = Http::post("{$this->apiBase}/sendPhoto", $payload);
+
+            if (!$response->successful()) {
+                Log::error('Telegram sendPhoto failed', [
+                    'chat_id' => $chatId,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                return null;
+            }
+
+            return $response->json('result');
+        } catch (\Exception $e) {
+            Log::error('Telegram sendPhoto exception', ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
+     * Send a voice message to a Telegram chat.
+     */
+    public function sendVoice(string $chatId, string $voiceUrl, string $caption = '', array $options = []): ?array
+    {
+        try {
+            $payload = [
+                'chat_id' => $chatId,
+                'voice' => $voiceUrl,
+                'caption' => $caption,
+                'parse_mode' => $options['parse_mode'] ?? 'HTML',
+            ];
+
+            if (!empty($options['reply_markup'])) {
+                $payload['reply_markup'] = json_encode($options['reply_markup']);
+            }
+
+            $response = Http::post("{$this->apiBase}/sendVoice", $payload);
+
+            if (!$response->successful()) {
+                Log::error('Telegram sendVoice failed', [
+                    'chat_id' => $chatId,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                return null;
+            }
+
+            return $response->json('result');
+        } catch (\Exception $e) {
+            Log::error('Telegram sendVoice exception', ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
      * Notify available agents of a human handoff request.
      * $agents is a collection of App\Models\TelegramAgent
      */
@@ -124,7 +194,7 @@ MSG;
     /**
      * Forward a visitor message to the active agent via Telegram.
      */
-    public function forwardToDealer(ChatConversation $conversation, string $message): bool
+    public function forwardToDealer(ChatConversation $conversation, string $message, ?string $attachmentUrl = null, ?string $attachmentType = null): bool
     {
         if (empty($conversation->agent_telegram_chat_id)) {
             return false;
@@ -132,10 +202,82 @@ MSG;
 
         $visitorName = $conversation->visitor_name ?? 'Customer';
         $text = "👤 <b>{$visitorName}:</b>\n{$message}";
+        $chatId = $conversation->agent_telegram_chat_id;
 
-        $result = $this->sendMessage($conversation->agent_telegram_chat_id, $text);
+        if ($attachmentUrl && $attachmentType) {
+            // Convert localhost URL to local file path for direct upload
+            $localPath = $this->resolveLocalPath($attachmentUrl);
+
+            if ($localPath && file_exists($localPath)) {
+                // Upload file directly to Telegram using multipart
+                if ($attachmentType === 'image') {
+                    $result = $this->uploadFileToTelegram($chatId, 'sendPhoto', 'photo', $localPath, $text);
+                } elseif ($attachmentType === 'audio') {
+                    $result = $this->uploadFileToTelegram($chatId, 'sendVoice', 'voice', $localPath, $text);
+                } else {
+                    $result = $this->sendMessage($chatId, $text);
+                }
+            } else {
+                // Fallback: try URL directly (works if server is publicly accessible)
+                if ($attachmentType === 'image') {
+                    $result = $this->sendPhoto($chatId, $attachmentUrl, $text);
+                } elseif ($attachmentType === 'audio') {
+                    $result = $this->sendVoice($chatId, $attachmentUrl, $text);
+                } else {
+                    $result = $this->sendMessage($chatId, $text);
+                }
+            }
+        } else {
+            $result = $this->sendMessage($chatId, $text);
+        }
 
         return $result !== null;
+    }
+
+    /**
+     * Upload a local file directly to Telegram using multipart form data.
+     */
+    protected function uploadFileToTelegram(string $chatId, string $method, string $fieldName, string $filePath, string $caption = ''): ?array
+    {
+        try {
+            $response = Http::attach(
+                $fieldName,
+                file_get_contents($filePath),
+                basename($filePath)
+            )->post("{$this->apiBase}/{$method}", [
+                'chat_id' => $chatId,
+                'caption' => $caption,
+                'parse_mode' => 'HTML',
+            ]);
+
+            if (!$response->successful()) {
+                Log::error("Telegram {$method} upload failed", [
+                    'chat_id' => $chatId,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                return null;
+            }
+
+            return $response->json('result');
+        } catch (\Exception $e) {
+            Log::error("Telegram {$method} upload exception", ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
+     * Convert an attachment URL to a local file path.
+     */
+    protected function resolveLocalPath(string $url): ?string
+    {
+        $appUrl = rtrim(config('app.url'), '/');
+        if (str_starts_with($url, $appUrl . '/storage/')) {
+            $relativePath = str_replace($appUrl . '/storage/', '', $url);
+            $fullPath = storage_path('app/public/' . $relativePath);
+            return file_exists($fullPath) ? $fullPath : null;
+        }
+        return null;
     }
 
     /**
