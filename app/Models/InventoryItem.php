@@ -86,6 +86,22 @@ class InventoryItem extends Model
     }
 
     /**
+     * Get the videos for the item.
+     */
+    public function videos()
+    {
+        return $this->hasMany(InventoryVideo::class)->orderBy('created_at', 'desc');
+    }
+
+    /**
+     * Get the documents for the item.
+     */
+    public function documents()
+    {
+        return $this->hasMany(InventoryDocument::class)->orderBy('created_at', 'desc');
+    }
+
+    /**
      * Get the primary image.
      */
     public function getPrimaryImageAttribute(): ?InventoryImage

@@ -123,6 +123,10 @@ Route::prefix('inventory')->middleware(['auth:sanctum', 'tenant'])->group(functi
     Route::put('/{id}/images/{image}/primary', [InventoryController::class, 'setPrimaryImage']);
     Route::delete('/{id}/images/{image}', [InventoryController::class, 'deleteImage']);
     Route::post('/{id}/images/external', [InventoryController::class, 'addExternalImage']);
+    Route::post('/{id}/videos', [InventoryController::class, 'uploadVideo']);
+    Route::delete('/{id}/videos/{video}', [InventoryController::class, 'deleteVideo']);
+    Route::post('/{id}/documents', [InventoryController::class, 'uploadDocument']);
+    Route::delete('/{id}/documents/{document}', [InventoryController::class, 'deleteDocument']);
     Route::post('/{id}/analyze', [InventoryController::class, 'analyze']);
     Route::post('/{id}/generate-description', [InventoryController::class, 'generateDescription']);
 });

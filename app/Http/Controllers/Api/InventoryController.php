@@ -14,6 +14,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use App\Models\InventoryImage;
+use App\Models\InventoryVideo;
+use App\Models\InventoryDocument;
 use App\Jobs\ProcessInventoryImageJob;
 
 class InventoryController extends Controller
@@ -155,6 +157,8 @@ class InventoryController extends Controller
                 ],
                 'generatedData' => $item->generated_data,
                 'images' => $item->images,
+                'videos' => $item->videos,
+                'documents' => $item->documents,
                 'analysis_results' => $item->analysis_results,
                 'confidence_score' => $item->confidence_score,
                 'metadata' => $item->metadata,
@@ -695,6 +699,137 @@ class InventoryController extends Controller
             'message' => 'External image added successfully',
             'data' => $image,
         ]);
+    }
+
+    /**
+     * Upload or link a video for an inventory item.
+     */
+    public function uploadVideo(Request $request, string $id): JsonResponse
+    {
+        $item = InventoryItem::find($id);
+
+        if (!$item) {
+            return response()->json(['success' => false, 'message' => 'Item not found'], 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'type' => 'required|in:upload,link',
+            'video' => 'required_if:type,upload|file|mimetypes:video/mp4,video/mpeg,video/quicktime|max:102400', // 100MB max
+            'url' => 'required_if:type,link|url',
+            'title' => 'nullable|string|max:255',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+        }
+
+        $data = [
+            'inventory_item_id' => $item->id,
+            'type' => $request->type,
+            'title' => $request->title,
+        ];
+
+        if ($request->type === 'upload' && $request->hasFile('video')) {
+            $file = $request->file('video');
+            $filename = 'video_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            $path = "inventory/{$item->id}/videos/{$filename}";
+
+            Storage::disk('public')->put($path, file_get_contents($file));
+            $data['path'] = $path;
+        } elseif ($request->type === 'link') {
+            $data['url'] = $request->url;
+        }
+
+        $video = InventoryVideo::create($data);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Video added successfully',
+            'data' => $video,
+        ]);
+    }
+
+    /**
+     * Delete a video.
+     */
+    public function deleteVideo(Request $request, string $id, string $videoId): JsonResponse
+    {
+        $video = InventoryVideo::where('inventory_item_id', $id)->find($videoId);
+
+        if (!$video) {
+            return response()->json(['success' => false, 'message' => 'Video not found'], 404);
+        }
+
+        if ($video->type === 'upload' && $video->path && Storage::disk('public')->exists($video->path)) {
+            Storage::disk('public')->delete($video->path);
+        }
+
+        $video->delete();
+
+        return response()->json(['success' => true, 'message' => 'Video deleted']);
+    }
+
+    /**
+     * Upload a document for an inventory item.
+     */
+    public function uploadDocument(Request $request, string $id): JsonResponse
+    {
+        $item = InventoryItem::find($id);
+
+        if (!$item) {
+            return response()->json(['success' => false, 'message' => 'Item not found'], 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'document' => 'required|file|mimes:pdf,doc,docx,xls,xlsx,txt|max:51200', // 50MB max
+            'name' => 'required|string|max:255',
+            'type' => 'required|string|max:50',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+        }
+
+        $file = $request->file('document');
+        $filename = 'doc_' . uniqid() . '.' . $file->getClientOriginalExtension();
+        $path = "inventory/{$item->id}/documents/{$filename}";
+
+        Storage::disk('public')->put($path, file_get_contents($file));
+
+        $document = InventoryDocument::create([
+            'inventory_item_id' => $item->id,
+            'name' => $request->name,
+            'type' => $request->type,
+            'path' => $path,
+            'mime_type' => $file->getClientMimeType(),
+            'size' => $file->getSize(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Document uploaded successfully',
+            'data' => $document,
+        ]);
+    }
+
+    /**
+     * Delete a document.
+     */
+    public function deleteDocument(Request $request, string $id, string $documentId): JsonResponse
+    {
+        $document = InventoryDocument::where('inventory_item_id', $id)->find($documentId);
+
+        if (!$document) {
+            return response()->json(['success' => false, 'message' => 'Document not found'], 404);
+        }
+
+        if (Storage::disk('public')->exists($document->path)) {
+            Storage::disk('public')->delete($document->path);
+        }
+
+        $document->delete();
+
+        return response()->json(['success' => true, 'message' => 'Document deleted']);
     }
 
     /**
