@@ -107,6 +107,7 @@ class WorkspaceChatConfig extends Model
             'logo_url' => null,
             'dark_mode' => false,
             'welcome_message' => 'Welcome! How can we help you today?',
+            'vdp_url_template' => null,
         ];
     }
 }

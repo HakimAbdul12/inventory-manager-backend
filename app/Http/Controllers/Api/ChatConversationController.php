@@ -127,7 +127,8 @@ class ChatConversationController extends Controller
     /**
      * Dealer replies directly from the dashboard.
      */
-    public function reply(Request $request, string $id): JsonResponse
+    public function reply(Request $request, string $id): JsonResponshttp://localhost:8000/widget/wk_PWLW0SWEBdSARyYp0TsYjTjxuayy72EiGqJ2fTAqHd4fq7R3HQdbTYTT0nQKt/message
+e
     {
         $request->validate(['message' => 'required|string|max:2000']);
 

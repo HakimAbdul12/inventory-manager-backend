@@ -94,7 +94,13 @@ class InventorySearchService
      */
     protected function formatVehicleCards($items): array
     {
-        return $items->map(function (InventoryItem $item) {
+        $config = \App\Models\WorkspaceChatConfig::withoutGlobalScope('tenant')
+            ->where('tenant_id', $items->first()?->tenant_id)
+            ->first();
+        
+        $urlTemplate = $config?->widget_settings['vdp_url_template'] ?? null;
+
+        return $items->map(function (InventoryItem $item) use ($urlTemplate) {
             $vehicle = $item->vehicle;
             if (!$vehicle) {
                 return null;
@@ -102,6 +108,23 @@ class InventorySearchService
 
             $primaryImage = $item->images->firstWhere('is_primary', true);
             $image = $primaryImage?->url;
+
+            $vdpUrl = null;
+            if ($urlTemplate) {
+                $vdpUrl = $urlTemplate;
+                // Combine id, generated_data and vehicle attributes for placeholders
+                $data = array_merge(
+                    ['id' => $item->id, 'system_id' => $item->id],
+                    $vehicle->toArray(),
+                    $item->generated_data ?? []
+                );
+                
+                foreach ($data as $key => $value) {
+                    if (is_scalar($value)) {
+                        $vdpUrl = str_replace('{{' . $key . '}}', (string)$value, $vdpUrl);
+                    }
+                }
+            }
 
             return [
                 'id' => $item->id,
@@ -115,10 +138,11 @@ class InventorySearchService
                 'image_url' => $image,
                 'status' => $vehicle->status ?? 'available',
                 'title' => $item->title,
+                'vdp_url' => $vdpUrl,
                 'cta' => [
                     ['label' => 'Book Test Drive', 'action' => 'test_drive'],
                     ['label' => 'Request Financing', 'action' => 'financing'],
-                    ['label' => 'View Details', 'action' => 'view_details'],
+                    ['label' => 'View Details', 'action' => 'view_details', 'url' => $vdpUrl],
                 ],
             ];
         })->filter()->values()->toArray();

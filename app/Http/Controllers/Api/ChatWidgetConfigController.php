@@ -44,6 +44,7 @@ class ChatWidgetConfigController extends Controller
             'widget_settings.position' => 'sometimes|in:left,right',
             'widget_settings.auto_open_delay' => 'sometimes|integer|min:0|max:60',
             'widget_settings.dark_mode' => 'sometimes|boolean',
+            'widget_settings.vdp_url_template' => 'sometimes|nullable|string|max:1000',
             'business_hours' => 'sometimes|array',
             'auto_human_handoff' => 'sometimes|boolean',
             'fallback_timeout_minutes' => 'sometimes|integer|min:1|max:60',

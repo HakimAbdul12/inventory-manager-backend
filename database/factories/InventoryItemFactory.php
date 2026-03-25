@@ -18,19 +18,13 @@ class InventoryItemFactory extends Factory
     {
         return [
             'user_id' => \App\Models\User::factory(),
-            'title' => $this->faker->sentence,
+            'tenant_id' => \App\Models\Tenant::factory(),
+            'process_id' => \App\Models\InventoryProcess::factory(),
             'status' => 'draft',
-            'vin' => $this->faker->uuid,
-            'stock_number' => $this->faker->bothify('STK-####'),
-            'type' => 'Vehicle',
-            'category' => 'Cars',
-            'year' => $this->faker->year,
-            'make' => $this->faker->word,
-            'model' => $this->faker->word,
-            'price' => $this->faker->numberBetween(5000, 50000),
-            'mileage' => $this->faker->numberBetween(1000, 100000),
-            'description' => $this->faker->paragraph,
-            'color' => $this->faker->colorName,
+            'generated_data' => [
+                'title' => $this->faker->sentence,
+            ],
+            'metadata' => [],
         ];
     }
 }

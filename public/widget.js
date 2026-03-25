@@ -1177,7 +1177,7 @@
                         </div>
                     </div>
                     <div class="vehicle-actions">
-                        ${(card.cta || []).map(c => `<div class="btn-action" data-action="${c.action}" data-id="${card.id}">${c.label}</div>`).join('')}
+                        ${(card.cta || []).map(c => `<div class="btn-action" data-action="${c.action}" data-id="${card.id}" data-vdp-url="${card.vdp_url || ''}">${c.label}</div>`).join('')}
                     </div>
                 `;
                 cardsContainer.appendChild(cardEl);
@@ -1187,6 +1187,14 @@
             // Bind action buttons
             wrapper.querySelectorAll('.btn-action').forEach(btn => {
                 btn.onclick = () => {
+                    const action = btn.getAttribute('data-action');
+                    const vdpUrl = btn.getAttribute('data-vdp-url');
+
+                    if (action === 'view_details' && vdpUrl) {
+                        window.open(vdpUrl, '_blank');
+                        return;
+                    }
+
                     const title = btn.closest('.vehicle-card').querySelector('.vehicle-title').textContent;
                     $('ag-input').value = `I'm interested in the ${title}. Can you tell me more about ${btn.textContent}?`;
                     sendMessage();

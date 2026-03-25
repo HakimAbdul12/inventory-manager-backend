@@ -10,6 +10,37 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Category extends Model
 {
     use HasFactory, HasUuids;
+    
+    /**
+     * Always append system_id to fields for internal/config use.
+     */
+    public function getFieldsAttribute($value): ?array
+    {
+        $fields = json_decode($value, true) ?: [];
+        
+        // Ensure system_id is always present in the field suggestions
+        $found = false;
+        foreach ($fields as $field) {
+            if (isset($field['key']) && ($field['key'] === 'system_id' || $field['key'] === 'id')) {
+                $found = true;
+                break;
+            }
+        }
+        
+        if (!$found) {
+            $fields[] = [
+                'key' => 'system_id',
+                'label' => 'Inventory System ID',
+                'type' => 'text',
+                'required' => true,
+                'generated' => false,
+                'disabled' => true,
+                'description' => 'Unique internal identifier for the inventory item.'
+            ];
+        }
+        
+        return $fields;
+    }
 
     protected $fillable = [
         'name',
