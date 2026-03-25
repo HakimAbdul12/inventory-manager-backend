@@ -63,8 +63,18 @@
             border: 1px solid rgba(255,255,255,0.1); outline: none;
         }
         #ag-trigger:hover { transform: scale(1.06) translateY(-2px); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25); }
-        #ag-trigger svg { color: white; width: 26px; height: 26px; transition: transform 0.4s var(--spring-easing); }
-        #ag-trigger:hover svg { transform: scale(1.08); }
+        
+        #ag-trigger svg { color: white; width: 26px; height: 26px; }
+        .icon-chat, .icon-close {
+            position: absolute;
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.85s cubic-bezier(0.34, 1.25, 0.64, 1), opacity 0.4s ease;
+        }
+        .icon-close { opacity: 0; transform: rotate(-180deg) scale(0.3); }
+        .icon-chat { opacity: 1; transform: rotate(0) scale(1); }
+        #ag-trigger.chat-open .icon-chat { opacity: 0; transform: rotate(180deg) scale(0.3); }
+        #ag-trigger.chat-open .icon-close { opacity: 1; transform: rotate(0) scale(1); }
+
         #ag-trigger .pulse-ring {
             position: absolute; width: 100%; height: 100%; border-radius: 50%;
             border: 2px solid rgba(0,0,0,0.2); animation: pulseRing 3s infinite; opacity: 0;
@@ -83,19 +93,33 @@
             -webkit-backdrop-filter: blur(40px) saturate(150%);
             border-radius: 24px;
             box-shadow: var(--widget-shadow);
-            display: none; flex-direction: column; overflow: hidden;
+            display: flex; flex-direction: column; overflow: hidden;
             z-index: 2147483647;
             border: 1px solid rgba(0,0,0,0.06);
-            animation: slideUp 0.5s var(--spring-easing);
-            transform-origin: bottom right;
+            
+            /* Emergence Animation Setup */
+            transform-origin: calc(100% - 28px) calc(100% + 44px);
+            opacity: 0;
+            transform: perspective(1200px) rotateX(15deg) rotateY(15deg) scale(0.01);
+            border-radius: 120px;
+            pointer-events: none;
+            visibility: hidden;
+            /* Shrinking (closing) transition */
+            transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease, border-radius 0.7s ease, visibility 0.7s;
+        }
+        #ag-window.ag-open {
+            opacity: 1;
+            transform: perspective(1200px) rotateX(0deg) rotateY(0deg) scale(1);
+            border-radius: 24px;
+            pointer-events: auto;
+            visibility: visible;
+            /* Blossoming (opening) transition */
+            transition: transform 0.85s cubic-bezier(0.34, 1.25, 0.64, 1), opacity 0.5s ease, border-radius 0.85s ease, visibility 0s;
         }
         #ag-window.expanded {
             width: 100vw; height: 100vh; max-height: 100vh;
             bottom: 0; right: 0; border-radius: 0;
-        }
-        @keyframes slideUp {
-            from { transform: translateY(20px) scale(0.95); opacity: 0; }
-            to { transform: translateY(0) scale(1); opacity: 1; }
+            transform-origin: calc(100% - 52px) calc(100% - 52px);
         }
 
         /* ── Resize Handle (top-left corner) ───────────────── */
@@ -407,7 +431,11 @@
         // Trigger button
         const trigger = document.createElement('div');
         trigger.id = 'ag-trigger';
-        trigger.innerHTML = `<div class="pulse-ring"></div>${ICONS.chat}`;
+        trigger.innerHTML = `
+            <div class="pulse-ring"></div>
+            <div class="icon-chat">${ICONS.chat}</div>
+            <div class="icon-close">${ICONS.close}</div>
+        `;
         trigger.onclick = () => toggleChat();
 
         // Chat window
@@ -628,7 +656,8 @@
     // ─── Toggle Chat Window ───────────────────────────────────
     function toggleChat(force) {
         isOpen = force !== undefined ? force : !isOpen;
-        $('ag-window').style.display = isOpen ? 'flex' : 'none';
+        $('ag-window').classList.toggle('ag-open', isOpen);
+        $('ag-trigger').classList.toggle('chat-open', isOpen);
     }
 
     function toggleExpand() {

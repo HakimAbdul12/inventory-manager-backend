@@ -18,14 +18,24 @@ class TenantEmailSetting extends Model
         'imap_password',
         'imap_encryption',
         'is_active',
+        'mail_mailer',
+        'mail_host',
+        'mail_port',
+        'mail_username',
+        'mail_password',
+        'mail_encryption',
+        'mail_from_address',
+        'mail_from_name',
     ];
 
     protected $hidden = [
         'imap_password',
+        'mail_password',
     ];
 
     protected $casts = [
         'imap_password' => 'encrypted',
+        'mail_password' => 'encrypted',
         'is_active' => 'boolean',
     ];
 

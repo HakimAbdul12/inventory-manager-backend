@@ -32,10 +32,11 @@ class InventorySearchService
         // Join vehicles for filtering
         $query->whereHas('vehicle', function ($q) use ($filters) {
             if (!empty($filters['make'])) {
-                $q->where('make', 'LIKE', "%{$filters['make']}%");
+                // Case-insensitive: DB may store 'BMW', 'Mercedes-Benz', etc.
+                $q->whereRaw('LOWER(make) LIKE ?', ['%' . strtolower($filters['make']) . '%']);
             }
             if (!empty($filters['model'])) {
-                $q->where('model', 'LIKE', "%{$filters['model']}%");
+                $q->whereRaw('LOWER(model) LIKE ?', ['%' . strtolower($filters['model']) . '%']);
             }
             if (!empty($filters['year_min'])) {
                 $q->where('year', '>=', $filters['year_min']);
@@ -50,8 +51,7 @@ class InventorySearchService
                 $q->where('price', '<=', $filters['price_max']);
             }
             if (!empty($filters['body_type'])) {
-                // body_type would be in generated_data, but filter on vehicle table if available
-                $q->where('model', 'LIKE', "%{$filters['body_type']}%");
+                $q->whereRaw('LOWER(model) LIKE ?', ['%' . strtolower($filters['body_type']) . '%']);
             }
         });
 
@@ -78,7 +78,7 @@ class InventorySearchService
         // Try with just make or just price range
         if (!empty($filters['make'])) {
             $query->whereHas('vehicle', function ($q) use ($filters) {
-                $q->where('make', 'LIKE', "%{$filters['make']}%");
+                $q->whereRaw('LOWER(make) LIKE ?', ['%' . strtolower($filters['make']) . '%']);
             });
         } elseif (!empty($filters['price_max'])) {
             $query->whereHas('vehicle', function ($q) use ($filters) {
@@ -166,7 +166,7 @@ class InventorySearchService
 
         foreach ($makes as $make) {
             if (str_contains($lower, $make)) {
-                $filters['make'] = ucfirst($make);
+                $filters['make'] = $make; // Store lowercase — queries use case-insensitive matching
                 break;
             }
         }

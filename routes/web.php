@@ -294,6 +294,13 @@ Route::prefix('widget')->group(function () {
     Route::get('/{apiKey}/status', [\App\Http\Controllers\Api\WidgetConversationController::class, 'status']);
     Route::get('/{apiKey}/messages', [\App\Http\Controllers\Api\WidgetConversationController::class, 'messages']);
     Route::post('/{apiKey}/disconnect', [\App\Http\Controllers\Api\WidgetConversationController::class, 'disconnect']);
+
+    // Test Drive Scheduling (Public)
+    Route::get('/{apiKey}/test-drives/slots', [\App\Http\Controllers\Api\TestDriveController::class, 'availableSlots']);
+    Route::post('/{apiKey}/test-drives/book', [\App\Http\Controllers\Api\TestDriveController::class, 'book']);
+    Route::post('/{apiKey}/test-drives/reschedule', [\App\Http\Controllers\Api\TestDriveController::class, 'reschedule']);
+    Route::post('/{apiKey}/test-drives/cancel', [\App\Http\Controllers\Api\TestDriveController::class, 'cancel']);
+    Route::post('/{apiKey}/test-drives/lookup', [\App\Http\Controllers\Api\TestDriveController::class, 'lookup']);
 });
 
 /*
@@ -352,6 +359,13 @@ Route::prefix('chat-widget')->middleware(['auth:sanctum', 'tenant'])->group(func
     Route::post('/queue/{id}/reply', [\App\Http\Controllers\Api\ChatConversationController::class, 'reply']);
     Route::post('/queue/{id}/end', [\App\Http\Controllers\Api\ChatConversationController::class, 'endAndHandToAI']);
     Route::post('/queue/{id}/close', [\App\Http\Controllers\Api\ChatConversationController::class, 'close']);
+
+    // Test Drive Configuration & Management
+    Route::get('/test-drives/config', [\App\Http\Controllers\Api\TestDriveConfigController::class, 'show']);
+    Route::put('/test-drives/config', [\App\Http\Controllers\Api\TestDriveConfigController::class, 'update']);
+    Route::get('/test-drives', [\App\Http\Controllers\Api\TestDriveController::class, 'index']);
+    Route::get('/test-drives/{id}', [\App\Http\Controllers\Api\TestDriveController::class, 'show']);
+    Route::patch('/test-drives/{id}/status', [\App\Http\Controllers\Api\TestDriveController::class, 'updateStatus']);
 });
 
 /*
