@@ -321,6 +321,7 @@ Route::prefix('chat-widget')->middleware(['auth:sanctum', 'tenant'])->group(func
     Route::put('/config', [\App\Http\Controllers\Api\ChatWidgetConfigController::class, 'update']);
     Route::post('/config/regenerate-key', [\App\Http\Controllers\Api\ChatWidgetConfigController::class, 'regenerateKey']);
     Route::get('/config/embed-code', [\App\Http\Controllers\Api\ChatWidgetConfigController::class, 'embedCode']);
+    Route::post('/config/test-external-api', [\App\Http\Controllers\Api\ChatWidgetConfigController::class, 'testExternalApi']);
 
     // Knowledge Base
     Route::get('/knowledge', [\App\Http\Controllers\Api\KnowledgeBaseController::class, 'index']);

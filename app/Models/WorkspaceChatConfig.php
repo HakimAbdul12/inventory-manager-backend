@@ -26,6 +26,7 @@ class WorkspaceChatConfig extends Model
         'ai_aggressiveness',
         'is_active',
         'allowed_domains',
+        'external_api_config',
     ];
 
     protected $casts = [
@@ -34,6 +35,7 @@ class WorkspaceChatConfig extends Model
         'allowed_domains' => 'array',
         'auto_human_handoff' => 'boolean',
         'is_active' => 'boolean',
+        'external_api_config' => 'array',
     ];
 
     protected $attributes = [
@@ -109,5 +111,47 @@ class WorkspaceChatConfig extends Model
             'welcome_message' => 'Welcome! How can we help you today?',
             'vdp_url_template' => null,
         ];
+    }
+
+    /**
+     * Check if this tenant has an enabled external API for inventory.
+     */
+    public function hasExternalApi(): bool
+    {
+        $config = $this->external_api_config;
+
+        return !empty($config)
+            && ($config['enabled'] ?? false)
+            && !empty($config['base_url']);
+    }
+
+    /**
+     * Get the external API config with defaults applied.
+     */
+    public function getExternalApiConfig(): ?array
+    {
+        if (!$this->hasExternalApi()) {
+            return null;
+        }
+
+        $config = $this->external_api_config;
+
+        return array_merge([
+            'enabled' => false,
+            'base_url' => '',
+            'http_method' => 'GET',
+            'auth' => ['type' => 'none'],
+            'request' => [
+                'params_location' => 'query',
+                'search_param' => 'q',
+                'filter_params' => [],
+                'extra_params' => [],
+            ],
+            'response' => [
+                'data_path' => '',
+                'field_map' => [],
+                'sample_response' => '',
+            ],
+        ], $config);
     }
 }

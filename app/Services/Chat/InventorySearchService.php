@@ -4,17 +4,38 @@ namespace App\Services\Chat;
 
 use App\Models\InventoryItem;
 use App\Models\Vehicle;
+use App\Models\WorkspaceChatConfig;
 use Illuminate\Support\Facades\Log;
 
 class InventorySearchService
 {
+    protected ExternalInventoryService $externalService;
+
+    public function __construct(ExternalInventoryService $externalService)
+    {
+        $this->externalService = $externalService;
+    }
+
     /**
      * Search inventory based on a natural language message.
-     * Returns formatted vehicle cards for the chat widget.
+     * Routes to external API or local DB depending on tenant config.
      */
-    public function searchFromMessage(string $message, string $tenantId, int $limit = 5): array
+    public function searchFromMessage(string $message, string $tenantId, int $limit = 5, ?WorkspaceChatConfig $config = null): array
     {
+        // Resolve config if not provided
+        if (!$config) {
+            $config = WorkspaceChatConfig::withoutGlobalScope('tenant')
+                ->where('tenant_id', $tenantId)
+                ->first();
+        }
+
         $filters = $this->extractFilters($message);
+
+        // External API takes priority when enabled
+        if ($config && $config->hasExternalApi()) {
+            $filters['_query'] = $message; // pass raw message for search param
+            return $this->externalService->search($config, $filters, $limit);
+        }
 
         return $this->search($tenantId, $filters, $limit);
     }

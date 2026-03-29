@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\WorkspaceChatConfig;
+use App\Services\Chat\ExternalInventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -52,6 +53,14 @@ class ChatWidgetConfigController extends Controller
             'is_active' => 'sometimes|boolean',
             'allowed_domains' => 'sometimes|array',
             'allowed_domains.*' => 'string|max:255',
+            'external_api_config' => 'sometimes|nullable|array',
+            'external_api_config.enabled' => 'sometimes|boolean',
+            'external_api_config.base_url' => 'sometimes|nullable|string|max:1000',
+            'external_api_config.http_method' => 'sometimes|in:GET,POST',
+            'external_api_config.auth' => 'sometimes|array',
+            'external_api_config.auth.type' => 'sometimes|in:none,api_key,bearer,basic',
+            'external_api_config.request' => 'sometimes|array',
+            'external_api_config.response' => 'sometimes|array',
         ]);
 
         $tenant = app('current_tenant');
@@ -70,6 +79,7 @@ class ChatWidgetConfigController extends Controller
             'ai_aggressiveness',
             'is_active',
             'allowed_domains',
+            'external_api_config',
         ]));
 
         return response()->json([
@@ -109,6 +119,31 @@ class ChatWidgetConfigController extends Controller
         return response()->json([
             'embed_code' => $this->generateEmbedCode($config),
         ]);
+    }
+
+    /**
+     * Test an external API configuration without saving it.
+     */
+    public function testExternalApi(Request $request, ExternalInventoryService $externalService): JsonResponse
+    {
+        $request->validate([
+            'config' => 'required|array',
+            'config.base_url' => 'required|string|max:1000',
+            'config.http_method' => 'required|in:GET,POST',
+            'config.auth' => 'sometimes|array',
+            'config.request' => 'sometimes|array',
+            'config.response' => 'sometimes|array',
+        ]);
+
+        $tenant = app('current_tenant');
+        $chatConfig = WorkspaceChatConfig::withoutGlobalScope('tenant')
+            ->where('tenant_id', $tenant->id)
+            ->first();
+
+        $vdpTemplate = $chatConfig?->widget_settings['vdp_url_template'] ?? null;
+        $result = $externalService->testConnection($request->input('config'), $vdpTemplate);
+
+        return response()->json($result);
     }
 
     /**

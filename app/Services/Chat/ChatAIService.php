@@ -520,10 +520,17 @@ PROMPT;
         $limit = $args['max_results'] ?? 5;
 
         try {
+            // Load the tenant's chat config so InventorySearchService can
+            // route to the external API when one is configured.
+            $config = WorkspaceChatConfig::withoutGlobalScope('tenant')
+                ->where('tenant_id', $conversation->tenant_id)
+                ->first();
+
             $results = $this->inventorySearch->searchFromMessage(
                 $query,
                 $conversation->tenant_id,
-                $limit
+                $limit,
+                $config
             );
 
             if (empty($results)) {
