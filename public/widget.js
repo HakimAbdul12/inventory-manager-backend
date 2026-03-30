@@ -930,7 +930,7 @@
                 console.log('[AgWidget] Received message via WS:', msg);
 
                 if (msg.sender_type === 'human' || msg.sender_type === 'human_agent') {
-                    appendMessage('agent', { content: msg.content, agent_name: agentName });
+                    appendMessage('agent', { content: msg.content, agent_name: agentName, metadata: msg.metadata });
                 } else if (msg.sender_type === 'ai' && msg.message_type === 'system') {
                     appendMessage('system', { content: msg.content });
                 }
@@ -1024,7 +1024,7 @@
                         if (renderedMessageIds.has(String(msg.id))) return;
                         renderedMessageIds.add(String(msg.id));
                         if (msg.sender_type === 'human' || msg.sender_type === 'human_agent') {
-                            appendMessage('agent', { content: msg.content, agent_name: agentName });
+                            appendMessage('agent', { content: msg.content, agent_name: agentName, metadata: msg.metadata });
                         } else if (msg.sender_type === 'ai' && msg.message_type === 'system') {
                             appendMessage('system', { content: msg.content });
                         }

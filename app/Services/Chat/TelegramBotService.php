@@ -291,9 +291,40 @@ MSG;
             return $this->handleCallbackQuery($update['callback_query']);
         }
 
+        $message = $update['message'] ?? null;
+        if (!$message) return null;
+
+        // Handle voice messages from agents
+        if (isset($message['voice'])) {
+            return $this->handleMediaMessage($message, 'voice', $message['voice']['file_id']);
+        }
+
+        // Handle audio messages from agents
+        if (isset($message['audio'])) {
+            return $this->handleMediaMessage($message, 'audio', $message['audio']['file_id']);
+        }
+
+        // Handle photo messages from agents
+        if (isset($message['photo'])) {
+            // Telegram sends multiple sizes; take the largest (last in array)
+            $photo = end($message['photo']);
+            return $this->handleMediaMessage($message, 'image', $photo['file_id']);
+        }
+
+        // Handle document messages from agents
+        if (isset($message['document'])) {
+            $mime = $message['document']['mime_type'] ?? '';
+            if (str_starts_with($mime, 'image/')) {
+                return $this->handleMediaMessage($message, 'image', $message['document']['file_id']);
+            } elseif (str_starts_with($mime, 'audio/') || str_starts_with($mime, 'video/')) {
+                return $this->handleMediaMessage($message, 'audio', $message['document']['file_id']);
+            }
+            // Unsupported document types are silently ignored
+        }
+
         // Handle text messages (dealer responses)
-        if (isset($update['message']['text'])) {
-            return $this->handleTextMessage($update['message']);
+        if (isset($message['text'])) {
+            return $this->handleTextMessage($message);
         }
 
         return null;
@@ -503,6 +534,154 @@ MSG;
                 'created_at' => $msg->created_at->toISOString(),
             ],
         ];
+    }
+
+    /**
+     * Handle a media message (voice, photo, audio) from a Telegram agent.
+     * Downloads the file from Telegram, stores it locally, and creates a ChatWidgetMessage.
+     */
+    protected function handleMediaMessage(array $message, string $mediaType, string $fileId): ?array
+    {
+        $chatId = (string) ($message['chat']['id'] ?? '');
+        $caption = $message['caption'] ?? '';
+
+        if (empty($chatId)) return null;
+
+        // Find active conversation claimed by this agent
+        $conversation = ChatConversation::withoutGlobalScope('tenant')
+            ->where('agent_telegram_chat_id', $chatId)
+            ->where('state', ChatConversation::STATE_HUMAN)
+            ->latest('last_activity_at')
+            ->first();
+
+        if (!$conversation) {
+            $this->sendMessage($chatId, '⚠️ No active conversation found. The customer may have disconnected.');
+            return null;
+        }
+
+        // Download the file from Telegram
+        $localPath = $this->downloadTelegramFile($fileId, $mediaType);
+
+        if (!$localPath) {
+            $this->sendMessage($chatId, '⚠️ Failed to process the attachment. Please try sending it again or type your message as text.');
+            return null;
+        }
+
+        // Build the public URL for the stored file
+        $relativePath = str_replace(storage_path('app/public/'), '', $localPath);
+        $attachmentUrl = rtrim(config('app.url'), '/') . '/storage/' . $relativePath;
+
+        // Get agent name
+        $agent = \App\Models\TelegramAgent::where('tenant_id', $conversation->tenant_id)
+            ->where('telegram_chat_id', $chatId)
+            ->first();
+        $agentName = $agent?->custom_name ?: ($agent?->first_name ?: 'Support Agent');
+
+        // Determine display content
+        $displayContent = $caption;
+        if (empty($displayContent)) {
+            $displayContent = match ($mediaType) {
+                'voice', 'audio' => '🎤 Voice Note',
+                'image' => '📸 Image',
+                default => '📎 Attachment',
+            };
+        }
+
+        // Determine the attachment type for the widget
+        $attachmentType = match ($mediaType) {
+            'voice', 'audio' => 'audio',
+            'image' => 'image',
+            default => 'file',
+        };
+
+        // Store the message
+        $msg = $conversation->messages()->create([
+            'sender_type' => ChatWidgetMessage::SENDER_HUMAN,
+            'content' => $displayContent,
+            'message_type' => ChatWidgetMessage::TYPE_TEXT,
+            'metadata' => [
+                'attachment_url' => $attachmentUrl,
+                'attachment_type' => $attachmentType,
+                'source' => 'telegram',
+            ],
+        ]);
+
+        $conversation->touchActivity();
+
+        return [
+            'action' => 'message_relayed',
+            'conversation_id' => $conversation->id,
+            'agent_name' => $agentName,
+            'message' => [
+                'id' => $msg->id,
+                'content' => $msg->content,
+                'sender_type' => $msg->sender_type,
+                'message_type' => $msg->message_type,
+                'metadata' => $msg->metadata,
+                'created_at' => $msg->created_at->toISOString(),
+            ],
+        ];
+    }
+
+    /**
+     * Download a file from Telegram by file_id and store it locally.
+     * Returns the local file path, or null on failure.
+     */
+    protected function downloadTelegramFile(string $fileId, string $mediaType): ?string
+    {
+        try {
+            // Step 1: Get file path from Telegram
+            $response = Http::get("{$this->apiBase}/getFile", ['file_id' => $fileId]);
+
+            if (!$response->successful() || !$response->json('ok')) {
+                Log::error('Telegram getFile failed', [
+                    'file_id' => $fileId,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                return null;
+            }
+
+            $filePath = $response->json('result.file_path');
+            if (!$filePath) return null;
+
+            // Step 2: Download the file content
+            $fileUrl = "https://api.telegram.org/file/bot{$this->botToken}/{$filePath}";
+            $fileResponse = Http::get($fileUrl);
+
+            if (!$fileResponse->successful()) {
+                Log::error('Telegram file download failed', [
+                    'url' => $fileUrl,
+                    'status' => $fileResponse->status(),
+                ]);
+                return null;
+            }
+
+            // Step 3: Determine extension and store locally
+            $extension = pathinfo($filePath, PATHINFO_EXTENSION) ?: match ($mediaType) {
+                'voice' => 'ogg',
+                'audio' => 'mp3',
+                'image' => 'jpg',
+                default => 'bin',
+            };
+
+            $filename = 'tg_' . uniqid() . '.' . $extension;
+            $storagePath = 'chat-attachments/' . $filename;
+            $fullPath = storage_path('app/public/' . $storagePath);
+
+            // Ensure directory exists
+            $dir = dirname($fullPath);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0755, true);
+            }
+
+            file_put_contents($fullPath, $fileResponse->body());
+
+            return $fullPath;
+        } catch (\Exception $e) {
+            Log::error('Telegram file download exception', ['error' => $e->getMessage()]);
+            return null;
+        }
     }
 
     /**
