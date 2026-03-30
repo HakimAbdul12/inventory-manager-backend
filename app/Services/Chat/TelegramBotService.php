@@ -5,6 +5,7 @@ namespace App\Services\Chat;
 use App\Models\ChatConversation;
 use App\Models\ChatWidgetMessage;
 use App\Models\TelegramConnection;
+use App\Models\WorkspaceChatConfig;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -458,6 +459,11 @@ MSG;
             return $this->handleCloseCommand($chatId, $text);
         }
 
+        // Detect @ai command (case-insensitive)
+        if (preg_match('/^@ai\b/i', $text)) {
+            return $this->handleAgentAICommand($chatId, $text);
+        }
+
         // Check if message is a connection code (e.g. 6 chars, uppercase)
         if (strlen($text) === 6 && strtoupper($text) === $text && ctype_alnum($text)) {
             $connection = TelegramConnection::withoutGlobalScope('tenant')
@@ -680,6 +686,85 @@ MSG;
             return $fullPath;
         } catch (\Exception $e) {
             Log::error('Telegram file download exception', ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
+     * Handle an @ai command from a human agent.
+     * Routes the command to the AI for processing (e.g., inventory search)
+     * and broadcasts the result to the widget.
+     */
+    protected function handleAgentAICommand(string $chatId, string $text): ?array
+    {
+        // Strip the @ai prefix (case-insensitive) to get the command
+        $command = trim(preg_replace('/^@ai\b/i', '', $text));
+
+        if (empty($command)) {
+            $this->sendMessage($chatId, "⚠️ Please provide a command after @ai.\n\n<b>Examples:</b>\n• <code>@ai show BMW X7 under 20k</code>\n• <code>@ai find SUVs with AWD</code>\n• <code>@ai search red trucks under 30k</code>");
+            return null;
+        }
+
+        // Find active conversation claimed by this agent
+        $conversation = ChatConversation::withoutGlobalScope('tenant')
+            ->where('agent_telegram_chat_id', $chatId)
+            ->where('state', ChatConversation::STATE_HUMAN)
+            ->latest('last_activity_at')
+            ->first();
+
+        if (!$conversation) {
+            $this->sendMessage($chatId, '⚠️ No active conversation found. The customer may have disconnected.');
+            return null;
+        }
+
+        // Load the workspace chat config for this tenant
+        $config = WorkspaceChatConfig::withoutGlobalScope('tenant')
+            ->where('tenant_id', $conversation->tenant_id)
+            ->where('is_active', true)
+            ->first();
+
+        if (!$config) {
+            $this->sendMessage($chatId, '⚠️ Could not load workspace configuration.');
+            return null;
+        }
+
+        // Notify agent that command is being processed
+        $this->sendMessage($chatId, "🤖 Processing: <i>{$command}</i>");
+
+        try {
+            /** @var ChatAIService $aiService */
+            $aiService = app(ChatAIService::class);
+            $result = $aiService->processAgentAICommand($conversation, $config, $command);
+
+            // Build Telegram confirmation for the agent
+            $vehicleCount = count($result['vehicle_cards'] ?? []);
+            $aiContent = $result['message']['content'] ?? '';
+            $summary = mb_strlen($aiContent) > 120 ? mb_substr($aiContent, 0, 120) . '...' : $aiContent;
+
+            $confirmMsg = "✅ <b>AI Response Sent</b>\n\n";
+            if ($vehicleCount > 0) {
+                $confirmMsg .= "📦 Showed <b>{$vehicleCount}</b> vehicle(s) to customer\n";
+            }
+            $confirmMsg .= "💬 <i>{$summary}</i>";
+
+            $this->sendMessage($chatId, $confirmMsg);
+
+            return [
+                'action' => 'ai_command_executed',
+                'conversation_id' => $conversation->id,
+                'tenant_id' => $conversation->tenant_id,
+                'message' => $result['message'],
+                'vehicle_cards' => $result['vehicle_cards'] ?? [],
+                'command' => $command,
+            ];
+        } catch (\Exception $e) {
+            Log::error('Agent @ai command failed', [
+                'error' => $e->getMessage(),
+                'command' => $command,
+                'conversation_id' => $conversation->id,
+            ]);
+
+            $this->sendMessage($chatId, '❌ AI command failed. Please try again or type the response manually.');
             return null;
         }
     }

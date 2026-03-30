@@ -328,6 +328,40 @@
         }
         .connecting-text { font-size: 12px; color: var(--widget-muted); font-weight: 600; letter-spacing: 0.02em; }
 
+        /* ── Tool Action Indicator ─────────────────────────── */
+        .ag-tool-action {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 16px; margin: 0 auto;
+            background: linear-gradient(135deg, rgba(244,244,245,0.9), rgba(228,228,231,0.7));
+            border: 1px solid rgba(0,0,0,0.04);
+            border-radius: 20px; max-width: 85%;
+            animation: msgIn 0.4s var(--spring-easing) forwards;
+            position: relative; overflow: hidden;
+        }
+        .ag-tool-action::after {
+            content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            animation: toolShimmer 2s infinite;
+        }
+        @keyframes toolShimmer {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+        .ag-tool-action .tool-dots {
+            display: flex; gap: 3px; flex-shrink: 0;
+        }
+        .ag-tool-action .tool-dots span {
+            width: 5px; height: 5px; border-radius: 50%;
+            background: var(--widget-text); opacity: 0.3;
+            animation: dotBounce 1.4s infinite ease-in-out both;
+        }
+        .ag-tool-action .tool-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .ag-tool-action .tool-dots span:nth-child(2) { animation-delay: -0.16s; }
+        .ag-tool-action .tool-text {
+            font-size: 12px; font-weight: 600; color: var(--widget-text);
+            letter-spacing: 0.01em;
+        }
+
         /* ── Vehicle Cards ─────────────────────────────────── */
         .cards-container { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; width: 100%; }
         .vehicle-card {
@@ -929,10 +963,22 @@
 
                 console.log('[AgWidget] Received message via WS:', msg);
 
+                // Always dismiss tool action indicator when a message arrives
+                removeToolAction();
+
                 if (msg.sender_type === 'human' || msg.sender_type === 'human_agent') {
                     appendMessage('agent', { content: msg.content, agent_name: agentName, metadata: msg.metadata });
-                } else if (msg.sender_type === 'ai' && msg.message_type === 'system') {
-                    appendMessage('system', { content: msg.content });
+                } else if (msg.sender_type === 'ai') {
+                    if (msg.message_type === 'system') {
+                        appendMessage('system', { content: msg.content });
+                    } else {
+                        // AI message (could be from agent @ai command during human mode)
+                        appendMessage('bot', {
+                            content: msg.content,
+                            vehicle_cards: msg.vehicle_cards,
+                            metadata: msg.metadata
+                        });
+                    }
                 }
                 // visitor messages are not rendered (already shown when sent)
             });
@@ -952,6 +998,16 @@
                 } else if (newState === 'closed') {
                     setChatState('ai');
                     appendMessage('system', { content: 'This conversation has been closed. Feel free to start a new one!' });
+                }
+            });
+
+            // Tool action feedback (e.g., "🔍 Searching inventory...")
+            channel.bind('tool.action', (data) => {
+                console.log('[AgWidget] Tool action:', data);
+                if (data.status === 'started') {
+                    showToolAction(data.display_text || '⏳ Processing...');
+                } else if (data.status === 'completed') {
+                    removeToolAction();
                 }
             });
 
@@ -1100,6 +1156,31 @@
     function removeConnectingLoader() {
         const el = $('connecting-loader');
         if (el) el.remove();
+    }
+
+    function showToolAction(displayText) {
+        removeToolAction(); // Remove any existing one first
+        const msgs = $('ag-messages');
+        const indicator = document.createElement('div');
+        indicator.id = 'ag-tool-action';
+        indicator.className = 'ag-tool-action';
+        indicator.innerHTML = `
+            <div class="tool-dots"><span></span><span></span><span></span></div>
+            <div class="tool-text">${displayText}</div>
+        `;
+        msgs.appendChild(indicator);
+        msgs.scrollTop = msgs.scrollHeight;
+
+        // Auto-dismiss after 15s as a safety net
+        indicator._timeout = setTimeout(() => removeToolAction(), 15000);
+    }
+
+    function removeToolAction() {
+        const el = $('ag-tool-action');
+        if (el) {
+            if (el._timeout) clearTimeout(el._timeout);
+            el.remove();
+        }
     }
 
     function appendMessage(role, data) {

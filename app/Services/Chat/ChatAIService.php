@@ -3,6 +3,7 @@
 namespace App\Services\Chat;
 
 use App\Events\NewTestDriveBooked;
+use App\Events\WidgetToolAction;
 use App\Models\ChatConversation;
 use App\Models\ChatWidgetMessage;
 use App\Models\TestDriveConfig;
@@ -119,44 +120,9 @@ class ChatAIService
         // results back, and let the AI compose the final response.
         $result = $this->ai->chatCompletion($messages, $aiOptions);
 
-        $vehicleCards = [];
-        $maxIterations = 3;
-        $iteration = 0;
-
-        while (!empty($result['tool_calls']) && $iteration < $maxIterations) {
-            $iteration++;
-
-            // Append assistant message (with tool_calls) to conversation
-            $messages[] = [
-                'role' => 'assistant',
-                'content' => $result['content'] ?? null,
-                'tool_calls' => $result['tool_calls'],
-            ];
-
-            // Execute each tool and append results
-            foreach ($result['tool_calls'] as $toolCall) {
-                if (($toolCall['type'] ?? 'function') !== 'function') {
-                    continue;
-                }
-
-                $toolResult = $this->executeTool($conversation, $toolCall);
-
-                // Capture vehicle cards from inventory search
-                $fnName = $toolCall['function']['name'] ?? '';
-                if ($fnName === 'search_inventory' && !empty($toolResult['vehicles'])) {
-                    $vehicleCards = $toolResult['vehicles'];
-                }
-
-                $messages[] = [
-                    'role' => 'tool',
-                    'tool_call_id' => $toolCall['id'],
-                    'content' => json_encode($toolResult),
-                ];
-            }
-
-            // Follow-up AI call with tool results
-            $result = $this->ai->chatCompletion($messages, $aiOptions);
-        }
+        [$result, $vehicleCards, $messages] = $this->runToolLoop(
+            $result, $messages, $aiOptions, $conversation, $conversation->id
+        );
 
         // ─── Extract Content ────────────────────────────────────────
         $aiContent = $result['content'] ?? '';
@@ -290,6 +256,7 @@ class ChatAIService
         $prompt = <<<PROMPT
 ## Core Identity
 You are an expert, friendly automotive assistant for {$config->dealership_name}.
+Your name is {$config->bot_name}. When a customer asks for your name, introduce yourself as "{$config->bot_name}".
 Current Date and Time: {$currentDate}
 Your primary goal is to help visitors find vehicles, answer questions, and capture leads when appropriate.
 Always maintain a professional, helpful, and polite tone.
@@ -304,6 +271,7 @@ Always maintain a professional, helpful, and polite tone.
 - Be helpful, accurate, and concise.
 - If unsure, say so honestly and suggest speaking to a real person.
 - When a customer asks about vehicles, availability, pricing, or specific models, ALWAYS use the search_inventory tool. Never fabricate vehicle information.
+- When a customer asks for the "latest", "newest", or "new" model of a brand, use your knowledge of current automotive models to determine the most recent model year and name, then search inventory for it. For example, if asked "do you have the latest Mercedes?", search for the current model year Mercedes-Benz models.
 - When showing vehicles from search results, include key details: year, make, model, price, mileage.
 - Vehicle cards with images and action buttons will be displayed automatically beside your message when you search inventory. Keep your text brief (1-2 sentences) since the cards provide all the details.
 - If the inventory search returns no results, inform the customer politely and suggest they speak with the team.
@@ -487,18 +455,81 @@ PROMPT;
         ];
     }
 
-    // ─── Tool Execution ─────────────────────────────────────────────
+    // ─── Tool Loop & Execution ───────────────────────────────────────
+
+    /**
+     * Reusable tool loop: executes tool calls, broadcasts progress,
+     * and re-calls the AI until no more tools are requested.
+     *
+     * @return array [$finalResult, $vehicleCards, $messages]
+     */
+    protected function runToolLoop(
+        array $result,
+        array $messages,
+        array $aiOptions,
+        ChatConversation $conversation,
+        ?string $broadcastConversationId = null
+    ): array {
+        $vehicleCards = [];
+        $maxIterations = 3;
+        $iteration = 0;
+
+        while (!empty($result['tool_calls']) && $iteration < $maxIterations) {
+            $iteration++;
+
+            // Append assistant message (with tool_calls) to conversation
+            $messages[] = [
+                'role' => 'assistant',
+                'content' => $result['content'] ?? null,
+                'tool_calls' => $result['tool_calls'],
+            ];
+
+            // Execute each tool and append results
+            foreach ($result['tool_calls'] as $toolCall) {
+                if (($toolCall['type'] ?? 'function') !== 'function') {
+                    continue;
+                }
+
+                $toolResult = $this->executeTool($conversation, $toolCall, $broadcastConversationId);
+
+                // Capture vehicle cards from inventory search
+                $fnName = $toolCall['function']['name'] ?? '';
+                if ($fnName === 'search_inventory' && !empty($toolResult['vehicles'])) {
+                    $vehicleCards = $toolResult['vehicles'];
+                }
+
+                $messages[] = [
+                    'role' => 'tool',
+                    'tool_call_id' => $toolCall['id'],
+                    'content' => json_encode($toolResult),
+                ];
+            }
+
+            // Follow-up AI call with tool results
+            $result = $this->ai->chatCompletion($messages, $aiOptions);
+        }
+
+        return [$result, $vehicleCards, $messages];
+    }
 
     /**
      * Execute a single tool call and return structured result data.
-     * Results are serialized to JSON and sent back to the AI.
+     * Optionally broadcasts a WidgetToolAction event for real-time UI feedback.
      */
-    protected function executeTool(ChatConversation $conversation, array $toolCall): array
-    {
+    protected function executeTool(
+        ChatConversation $conversation,
+        array $toolCall,
+        ?string $broadcastConversationId = null
+    ): array {
         $name = $toolCall['function']['name'] ?? '';
         $args = json_decode($toolCall['function']['arguments'] ?? '{}', true) ?? [];
 
         \Illuminate\Support\Facades\Log::info("Executing tool: {$name}", ['args' => $args]);
+
+        // Broadcast tool start event for real-time widget feedback
+        if ($broadcastConversationId) {
+            broadcast(new WidgetToolAction($broadcastConversationId, $name, 'started'));
+        }
 
         $result = match ($name) {
             'search_inventory' => $this->handleSearchInventory($conversation, $args),
@@ -898,5 +929,111 @@ PROMPT;
         }
 
         return max(0.0, min(1.0, $score));
+    }
+
+    // ─── Agent @AI Command Processing ───────────────────────────────
+
+    /**
+     * Process an @ai command from a human agent (via Telegram).
+     * Runs the AI with tools but does NOT store a visitor message —
+     * the command comes from the agent, not the visitor.
+     */
+    public function processAgentAICommand(
+        ChatConversation $conversation,
+        WorkspaceChatConfig $config,
+        string $command
+    ): array {
+        // Retrieve relevant knowledge chunks for context
+        $knowledgeContext = $this->knowledgeBase->retrieveRelevant(
+            $command,
+            $conversation->tenant_id,
+            3
+        );
+
+        // Build the system prompt
+        $systemPrompt = $this->buildSystemPrompt($config, $knowledgeContext, $conversation);
+
+        // Add a special instruction for agent-initiated commands
+        $systemPrompt .= "\n\n## Agent-Initiated Command";
+        $systemPrompt .= "\nA human support agent has requested you to perform an action on behalf of the customer.";
+        $systemPrompt .= "\nProcess their request and respond directly to the customer in a natural way.";
+        $systemPrompt .= "\nDo NOT mention that an agent asked you to do this. Respond as if you're proactively helping the customer.";
+
+        $messages = [
+            ['role' => 'system', 'content' => $systemPrompt],
+        ];
+
+        // Add recent conversation history for context
+        $context = $conversation->ai_context ?? [];
+        foreach ($context as $entry) {
+            $messages[] = [
+                'role' => $entry['role'],
+                'content' => $entry['content'],
+            ];
+        }
+
+        // Add the agent's command as a user message for the AI
+        $messages[] = [
+            'role' => 'user',
+            'content' => $command,
+        ];
+
+        $aiOptions = [
+            'temperature' => $this->getTemperature($config),
+            'max_tokens' => 4096,
+            'tools' => $this->getToolDefinitions(),
+        ];
+
+        // Run AI with tool loop
+        $result = $this->ai->chatCompletion($messages, $aiOptions);
+
+        [$result, $vehicleCards, $messages] = $this->runToolLoop(
+            $result, $messages, $aiOptions, $conversation, $conversation->id
+        );
+
+        // Extract content
+        $aiContent = $result['content'] ?? '';
+
+        if (str_contains($aiContent, '</think>')) {
+            $aiContent = trim(preg_replace('/<think>[\s\S]*?<\/think>/i', '', $aiContent));
+        }
+
+        // Fallback for empty content
+        if (empty(trim($aiContent))) {
+            if (!empty($vehicleCards)) {
+                $count = count($vehicleCards);
+                $aiContent = "I found {$count} vehicle(s) that might interest you! Take a look at the options below.";
+            } else {
+                $aiContent = "I looked into that but couldn't find any matching results. Could you provide more details?";
+            }
+        }
+
+        // Store the AI response as a message in the conversation
+        $aiMessage = $conversation->messages()->create([
+            'sender_type' => ChatWidgetMessage::SENDER_AI,
+            'content' => $aiContent,
+            'message_type' => ChatWidgetMessage::TYPE_TEXT,
+            'metadata' => [
+                'source' => 'agent_ai_command',
+                'original_command' => $command,
+                'model' => $result['model'] ?? null,
+            ],
+        ]);
+
+        // Update AI context so future messages have this context
+        $conversation->appendToContext('assistant', $aiContent);
+
+        return [
+            'message' => [
+                'id' => $aiMessage->id,
+                'content' => $aiMessage->content,
+                'sender_type' => $aiMessage->sender_type,
+                'message_type' => $aiMessage->message_type,
+                'metadata' => $aiMessage->metadata,
+                'created_at' => $aiMessage->created_at->toISOString(),
+            ],
+            'vehicle_cards' => $vehicleCards,
+            'command' => $command,
+        ];
     }
 }

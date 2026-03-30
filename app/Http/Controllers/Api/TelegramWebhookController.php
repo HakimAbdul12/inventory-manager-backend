@@ -85,6 +85,17 @@ class TelegramWebhookController extends Controller
                     $newState
                 ));
             }
+
+            // Agent used @ai command → AI response needs to be broadcast to widget
+            if ($action === 'ai_command_executed' && !empty($result['message'])) {
+                $msg = $result['message'];
+                $msg['vehicle_cards'] = $result['vehicle_cards'] ?? [];
+
+                broadcast(new WidgetMessageSent(
+                    $result['conversation_id'],
+                    $msg
+                ));
+            }
         } catch (\Exception $e) {
             Log::error('Telegram webhook processing error', [
                 'error' => $e->getMessage(),
