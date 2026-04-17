@@ -3,17 +3,18 @@
 namespace App\Services\Chat;
 
 use App\Models\InventoryItem;
-use App\Models\Vehicle;
 use App\Models\WorkspaceChatConfig;
 use Illuminate\Support\Facades\Log;
 
 class InventorySearchService
 {
     protected ExternalInventoryService $externalService;
+    protected \App\Services\EmbeddingService $embeddingService;
 
-    public function __construct(ExternalInventoryService $externalService)
+    public function __construct(ExternalInventoryService $externalService, \App\Services\EmbeddingService $embeddingService)
     {
         $this->externalService = $externalService;
+        $this->embeddingService = $embeddingService;
     }
 
     /**
@@ -29,220 +30,133 @@ class InventorySearchService
                 ->first();
         }
 
-        $filters = $this->extractFilters($message);
-
         // External API takes priority when enabled
         if ($config && $config->hasExternalApi()) {
-            $filters['_query'] = $message; // pass raw message for search param
+            $filters = ['_query' => $message]; // pass raw message for search param
             return $this->externalService->search($config, $filters, $limit);
         }
 
-        return $this->search($tenantId, $filters, $limit);
+        // Smart Internal (Vector Search)
+        $queryEmbedding = $this->embeddingService->generateEmbedding($message);
+        if ($queryEmbedding) {
+            $vectorString = '[' . implode(',', $queryEmbedding) . ']';
+            
+            // Perform vector similarity search ordering by distance
+            // Operator `<=>` is cosine distance. 
+            $items = InventoryItem::withoutGlobalScope('tenant')
+                ->where('tenant_id', $tenantId)
+                ->where('status', InventoryItem::STATUS_PUBLISHED)
+                ->whereNotNull('embedding')
+                ->with(['images'])
+                ->orderByRaw("embedding <=> ?::vector", [$vectorString])
+                ->limit($limit)
+                ->get();
+                
+            if ($items->isNotEmpty()) {
+                Log::info("Semantic search yielded results for query: {$message}");
+                return $this->formatInventoryCards($items);
+            }
+        }
+
+        // Legacy Keyword Fallback (Dynamic Text Matching)
+        return $this->search($tenantId, $message, $limit);
     }
 
     /**
-     * Search inventory with explicit filters.
+     * Search inventory leveraging generated vector_string for generic dynamic matching.
      */
-    public function search(string $tenantId, array $filters = [], int $limit = 5): array
+    public function search(string $tenantId, string $message = '', int $limit = 5): array
     {
         $query = InventoryItem::withoutGlobalScope('tenant')
             ->where('tenant_id', $tenantId)
             ->where('status', InventoryItem::STATUS_PUBLISHED)
-            ->with(['vehicle', 'images']);
+            ->with(['images']);
 
-        // Join vehicles for filtering
-        $query->whereHas('vehicle', function ($q) use ($filters) {
-            if (!empty($filters['make'])) {
-                // Case-insensitive: DB may store 'BMW', 'Mercedes-Benz', etc.
-                $q->whereRaw('LOWER(make) LIKE ?', ['%' . strtolower($filters['make']) . '%']);
+        if (!empty($message)) {
+            // Very simple fallback: look for words inside the vector string
+            $words = array_filter(explode(' ', strtolower(preg_replace('/[^a-z0-9\s]/', '', $message))), function ($w) {
+                // Ignore very short stop words
+                return strlen($w) > 2;
+            });
+
+            if (!empty($words)) {
+                $query->where(function ($q) use ($words) {
+                    foreach ($words as $word) {
+                        $q->orWhere('vector_string', 'ILIKE', '%' . $word . '%');
+                    }
+                });
             }
-            if (!empty($filters['model'])) {
-                $q->whereRaw('LOWER(model) LIKE ?', ['%' . strtolower($filters['model']) . '%']);
-            }
-            if (!empty($filters['year_min'])) {
-                $q->where('year', '>=', $filters['year_min']);
-            }
-            if (!empty($filters['year_max'])) {
-                $q->where('year', '<=', $filters['year_max']);
-            }
-            if (!empty($filters['price_min'])) {
-                $q->where('price', '>=', $filters['price_min']);
-            }
-            if (!empty($filters['price_max'])) {
-                $q->where('price', '<=', $filters['price_max']);
-            }
-            if (!empty($filters['body_type'])) {
-                $q->whereRaw('LOWER(model) LIKE ?', ['%' . strtolower($filters['body_type']) . '%']);
-            }
-        });
+        }
 
         $items = $query->limit($limit)->get();
-
-        // If no results, try a broader search
-        if ($items->isEmpty() && !empty($filters)) {
-            $items = $this->broadSearch($tenantId, $filters, $limit);
-        }
-
-        return $this->formatVehicleCards($items);
+        return $this->formatInventoryCards($items);
     }
 
     /**
-     * Broader search when exact filters yield no results — suggests similar vehicles.
+     * Format inventory items as standard AI widget cards.
+     * Extracts properties dynamically from generated_data instead of hardcoded models.
      */
-    protected function broadSearch(string $tenantId, array $filters, int $limit): \Illuminate\Support\Collection
+    protected function formatInventoryCards($items): array
     {
-        $query = InventoryItem::withoutGlobalScope('tenant')
-            ->where('tenant_id', $tenantId)
-            ->where('status', InventoryItem::STATUS_PUBLISHED)
-            ->with(['vehicle', 'images']);
-
-        // Try with just make or just price range
-        if (!empty($filters['make'])) {
-            $query->whereHas('vehicle', function ($q) use ($filters) {
-                $q->whereRaw('LOWER(make) LIKE ?', ['%' . strtolower($filters['make']) . '%']);
-            });
-        } elseif (!empty($filters['price_max'])) {
-            $query->whereHas('vehicle', function ($q) use ($filters) {
-                $q->where('price', '<=', $filters['price_max'] * 1.2); // 20% tolerance
-            });
-        }
-
-        return $query->limit($limit)->get();
-    }
-
-    /**
-     * Format inventory items as vehicle cards for the widget.
-     */
-    protected function formatVehicleCards($items): array
-    {
-        $config = \App\Models\WorkspaceChatConfig::withoutGlobalScope('tenant')
+        $config = WorkspaceChatConfig::withoutGlobalScope('tenant')
             ->where('tenant_id', $items->first()?->tenant_id)
             ->first();
         
         $urlTemplate = $config?->widget_settings['vdp_url_template'] ?? null;
 
         return $items->map(function (InventoryItem $item) use ($urlTemplate) {
-            $vehicle = $item->vehicle;
-            if (!$vehicle) {
-                return null;
-            }
+            $data = $item->generated_data ?? [];
 
             $primaryImage = $item->images->firstWhere('is_primary', true);
-            $image = $primaryImage?->url;
+            $image = $primaryImage?->url ?? $data['image_url'] ?? null;
 
             $vdpUrl = null;
             if ($urlTemplate) {
                 $vdpUrl = $urlTemplate;
-                // Combine id, generated_data and vehicle attributes for placeholders
-                $data = array_merge(
+                // Combine id and generated_data for placeholders
+                $placeholderData = array_merge(
                     ['id' => $item->id, 'system_id' => $item->id],
-                    $vehicle->toArray(),
-                    $item->generated_data ?? []
+                    $data
                 );
                 
-                foreach ($data as $key => $value) {
+                foreach ($placeholderData as $key => $value) {
                     if (is_scalar($value)) {
                         $vdpUrl = str_replace('{{' . $key . '}}', (string)$value, $vdpUrl);
                     }
                 }
             }
 
+            // Derive dynamic representation values
+            $title = $item->title ?? $data['title'] ?? trim(($data['make'] ?? '') . ' ' . ($data['model'] ?? ''));
+            if (empty($title)) {
+                $title = "Item #" . substr($item->id, 0, 8);
+            }
+
+            $priceRaw = $data['price'] ?? null;
+            $priceFormatted = is_numeric($priceRaw) ? number_format((float)$priceRaw, 0) : null;
+            
+            $mileageRaw = $data['mileage'] ?? null;
+            $mileageFormatted = is_numeric($mileageRaw) ? number_format((float)$mileageRaw, 0) : null;
+
             return [
                 'id' => $item->id,
-                'year' => $vehicle->year,
-                'make' => $vehicle->make,
-                'model' => $vehicle->model,
-                'trim' => $vehicle->trim,
-                'price' => number_format($vehicle->price, 0),
-                'price_raw' => $vehicle->price,
-                'mileage' => number_format($vehicle->mileage, 0),
+                'title' => $title,
+                'price' => $priceFormatted,
+                'price_raw' => $priceRaw,
                 'image_url' => $image,
-                'status' => $vehicle->status ?? 'available',
-                'title' => $item->title,
+                'status' => $data['status'] ?? 'available',
                 'vdp_url' => $vdpUrl,
+                // Include typical fallback metadata cleanly
+                'year' => $data['year'] ?? null,
+                'make' => $data['make'] ?? null,
+                'model' => $data['model'] ?? null,
+                'trim' => $data['trim'] ?? null,
+                'mileage' => $mileageFormatted,
                 'cta' => [
-                    ['label' => 'Book Test Drive', 'action' => 'test_drive'],
-                    ['label' => 'Request Financing', 'action' => 'financing'],
-                    ['label' => 'View Details', 'action' => 'view_details', 'url' => $vdpUrl],
+                    ['label' => 'More Details', 'action' => 'view_details', 'url' => $vdpUrl],
+                    ['label' => 'Ask Question', 'action' => 'inquire'],
                 ],
             ];
         })->filter()->values()->toArray();
-    }
-
-    /**
-     * Extract search filters from a natural language message.
-     */
-    protected function extractFilters(string $message): array
-    {
-        $lower = strtolower($message);
-        $filters = [];
-
-        // Extract make
-        $makes = [
-            'toyota',
-            'honda',
-            'ford',
-            'chevrolet',
-            'bmw',
-            'mercedes',
-            'audi',
-            'tesla',
-            'nissan',
-            'hyundai',
-            'kia',
-            'volkswagen',
-            'subaru',
-            'mazda',
-            'lexus',
-            'jeep',
-            'dodge',
-            'ram',
-            'gmc',
-            'cadillac',
-            'volvo',
-            'porsche',
-            'land rover',
-            'jaguar',
-            'infiniti',
-            'acura',
-            'genesis',
-            'lincoln'
-        ];
-
-        foreach ($makes as $make) {
-            if (str_contains($lower, $make)) {
-                $filters['make'] = $make; // Store lowercase — queries use case-insensitive matching
-                break;
-            }
-        }
-
-        // Extract price constraints
-        if (preg_match('/under\s*\$?([\d,]+)/i', $message, $m)) {
-            $filters['price_max'] = (int) str_replace(',', '', $m[1]);
-        }
-        if (preg_match('/over\s*\$?([\d,]+)/i', $message, $m)) {
-            $filters['price_min'] = (int) str_replace(',', '', $m[1]);
-        }
-        if (preg_match('/between\s*\$?([\d,]+)\s*(?:and|-)\s*\$?([\d,]+)/i', $message, $m)) {
-            $filters['price_min'] = (int) str_replace(',', '', $m[1]);
-            $filters['price_max'] = (int) str_replace(',', '', $m[2]);
-        }
-
-        // Extract year
-        if (preg_match('/\b(20[1-2]\d)\b/', $message, $m)) {
-            $filters['year_min'] = (int) $m[1];
-            $filters['year_max'] = (int) $m[1];
-        }
-
-        // Extract body type
-        $bodyTypes = ['suv', 'sedan', 'truck', 'coupe', 'van', 'hatchback', 'convertible', 'wagon'];
-        foreach ($bodyTypes as $type) {
-            if (str_contains($lower, $type)) {
-                $filters['body_type'] = $type;
-                break;
-            }
-        }
-
-        return $filters;
     }
 }
