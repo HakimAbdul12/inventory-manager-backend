@@ -41,25 +41,103 @@ class InventorySearchService
         if ($queryEmbedding) {
             $vectorString = '[' . implode(',', $queryEmbedding) . ']';
             
-            // Perform vector similarity search ordering by distance
-            // Operator `<=>` is cosine distance. 
-            $items = InventoryItem::withoutGlobalScope('tenant')
+            // Keyword Boost: Extract potential keywords from message to rerank matches
+            $keywords = array_filter(explode(' ', strtolower(preg_replace('/[^a-z0-9\s]/', '', $message))), function ($w) {
+                return strlen($w) > 3; // Focus on significant words (e.g. "Mercedes", "Sedan")
+            });
+
+            // 1. Identify if a specific Brand (Make) is requested
+            $requestedMakes = $this->identifyRequestedMakes($message, $tenantId);
+
+            $query = InventoryItem::withoutGlobalScope('tenant')
                 ->where('tenant_id', $tenantId)
                 ->where('status', InventoryItem::STATUS_PUBLISHED)
                 ->whereNotNull('embedding')
-                ->with(['images'])
-                ->orderByRaw("embedding <=> ?::vector", [$vectorString])
+                ->with(['images']);
+
+            // 2. Strict Filter: If brands are detected, only search within those brands
+            if (!empty($requestedMakes)) {
+                $query->where(function($q) use ($requestedMakes) {
+                    foreach ($requestedMakes as $make) {
+                        $q->orWhere('vector_string', 'ILIKE', '%' . $make . '%');
+                    }
+                });
+            }
+
+            // Build dynamic ranking expression
+            // Base rank is the semantic distance (lower is closer)
+            // Added parentheses to ensure correct operator precedence (distance - boost)
+            $rankExpression = "(embedding <=> ?::vector)";
+            $bindings = [$vectorString];
+
+            // Add boosts for exact keyword matches in the vector_string
+            foreach ($keywords as $word) {
+                // If the word matches, we subtract from the distance (effectively boosting it)
+                $rankExpression .= " - (CASE WHEN vector_string ILIKE ? THEN 0.15 ELSE 0 END)";
+                $bindings[] = '%' . $word . '%';
+            }
+
+            $items = (clone $query)->orderByRaw($rankExpression, $bindings)
                 ->limit($limit)
                 ->get();
                 
+            // 3. Fallback: If strict filtered search is empty, broaden search to show alternatives
+            if ($items->isEmpty() && !empty($requestedMakes)) {
+                $items = InventoryItem::withoutGlobalScope('tenant')
+                    ->where('tenant_id', $tenantId)
+                    ->where('status', InventoryItem::STATUS_PUBLISHED)
+                    ->whereNotNull('embedding')
+                    ->with(['images'])
+                    ->orderByRaw($rankExpression, $bindings)
+                    ->limit($limit)
+                    ->get();
+                
+                Log::info("Strict brand search found no results. Falling back to semantic alternatives for: {$message}");
+            }
+
             if ($items->isNotEmpty()) {
-                Log::info("Semantic search yielded results for query: {$message}");
+                Log::info("Hybrid semantic search yielded results for query: {$message}", [
+                    'keywords' => $keywords,
+                    'detected_makes' => $requestedMakes
+                ]);
                 return $this->formatInventoryCards($items);
             }
         }
 
         // Legacy Keyword Fallback (Dynamic Text Matching)
         return $this->search($tenantId, $message, $limit);
+    }
+
+    /**
+     * Identifies known inventory brand names within a user's message.
+     */
+    protected function identifyRequestedMakes(string $message, string $tenantId): array
+    {
+        // Cache this for performance if inventory is large
+        $availableMakes = InventoryItem::withoutGlobalScope('tenant')
+            ->where('tenant_id', $tenantId)
+            ->whereNotNull('embedding')
+            ->get()
+            ->map(function ($item) {
+                return $item->generated_data['make'] ?? null;
+            })
+            ->filter()
+            ->unique()
+            ->map(fn($m) => strtolower($m))
+            ->toArray();
+
+        $detected = [];
+        $messageLower = strtolower($message);
+
+        foreach ($availableMakes as $make) {
+            // Handle variations like "Mercedes-Benz" vs user typing "Mercedes"
+            $shortMake = head(explode('-', $make));
+            if (str_contains($messageLower, $make) || str_contains($messageLower, $shortMake)) {
+                $detected[] = $make;
+            }
+        }
+
+        return $detected;
     }
 
     /**

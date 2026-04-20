@@ -56,4 +56,9 @@ return [
         'api_key' => env('GROQ_API_KEY'),
     ],
 
+    'huggingface' => [
+        'api_key' => env('HUGGINGFACE_API_KEY'),
+        'embedding_model' => env('HUGGINGFACE_EMBEDDING_MODEL', 'sentence-transformers/all-MiniLM-L6-v2'),
+    ],
+
 ];
