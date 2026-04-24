@@ -32,7 +32,7 @@ class InventorySearchService
 
         // External API takes priority when enabled
         if ($config && $config->hasExternalApi()) {
-            $filters = ['_query' => $message]; // pass raw message for search param
+            $filters = ['_query' => $message];
             return $this->externalService->search($config, $filters, $limit);
         }
 
@@ -40,14 +40,9 @@ class InventorySearchService
         $queryEmbedding = $this->embeddingService->generateEmbedding($message);
         if ($queryEmbedding) {
             $vectorString = '[' . implode(',', $queryEmbedding) . ']';
-            
-            // Keyword Boost: Extract potential keywords from message to rerank matches
-            $keywords = array_filter(explode(' ', strtolower(preg_replace('/[^a-z0-9\s]/', '', $message))), function ($w) {
-                return strlen($w) > 3; // Focus on significant words (e.g. "Mercedes", "Sedan")
-            });
 
-            // 1. Identify if a specific Brand (Make) is requested
-            $requestedMakes = $this->identifyRequestedMakes($message, $tenantId);
+            // Detect brand and model intent from the user's message
+            $intent = $this->detectSearchIntent($message, $tenantId);
 
             $query = InventoryItem::withoutGlobalScope('tenant')
                 ->where('tenant_id', $tenantId)
@@ -55,50 +50,69 @@ class InventorySearchService
                 ->whereNotNull('embedding')
                 ->with(['images']);
 
-            // 2. Strict Filter: If brands are detected, only search within those brands
-            if (!empty($requestedMakes)) {
-                $query->where(function($q) use ($requestedMakes) {
-                    foreach ($requestedMakes as $make) {
+            // Strict brand filter when a specific make is detected
+            if (!empty($intent['makes'])) {
+                $query->where(function ($q) use ($intent) {
+                    foreach ($intent['makes'] as $make) {
                         $q->orWhere('vector_string', 'ILIKE', '%' . $make . '%');
                     }
                 });
             }
 
-            // Build dynamic ranking expression
-            // Base rank is the semantic distance (lower is closer)
-            // Added parentheses to ensure correct operator precedence (distance - boost)
+            // Build ranking expression with tiered boosting:
+            // - Model match gets a heavy boost (-0.5) to ensure precise results
+            // - Brand match gets a medium boost (-0.15) for general relevance
+            // - Other keyword matches get a lighter boost (-0.1)
             $rankExpression = "(embedding <=> ?::vector)";
             $bindings = [$vectorString];
 
-            // Add boosts for exact keyword matches in the vector_string
-            foreach ($keywords as $word) {
-                // If the word matches, we subtract from the distance (effectively boosting it)
+            // Heavy boost for detected model names (e.g. "m5", "x7", "c300")
+            foreach ($intent['models'] as $model) {
+                $rankExpression .= " - (CASE WHEN vector_string ILIKE ? THEN 0.5 ELSE 0 END)";
+                $bindings[] = '%' . $model . '%';
+            }
+
+            // Medium boost for detected makes
+            foreach ($intent['makes'] as $make) {
                 $rankExpression .= " - (CASE WHEN vector_string ILIKE ? THEN 0.15 ELSE 0 END)";
+                $bindings[] = '%' . $make . '%';
+            }
+
+            // Light boost for other significant keywords (e.g. "luxury", "sedan", "sports")
+            foreach ($intent['keywords'] as $word) {
+                $rankExpression .= " - (CASE WHEN vector_string ILIKE ? THEN 0.1 ELSE 0 END)";
                 $bindings[] = '%' . $word . '%';
             }
 
+            // Fetch more than needed so we can deduplicate effectively
+            $fetchLimit = $limit * 3;
             $items = (clone $query)->orderByRaw($rankExpression, $bindings)
-                ->limit($limit)
+                ->limit($fetchLimit)
                 ->get();
-                
-            // 3. Fallback: If strict filtered search is empty, broaden search to show alternatives
-            if ($items->isEmpty() && !empty($requestedMakes)) {
+
+            // Fallback: If strict brand filter yielded nothing, broaden to all inventory
+            if ($items->isEmpty() && !empty($intent['makes'])) {
                 $items = InventoryItem::withoutGlobalScope('tenant')
                     ->where('tenant_id', $tenantId)
                     ->where('status', InventoryItem::STATUS_PUBLISHED)
                     ->whereNotNull('embedding')
                     ->with(['images'])
                     ->orderByRaw($rankExpression, $bindings)
-                    ->limit($limit)
+                    ->limit($fetchLimit)
                     ->get();
-                
-                Log::info("Strict brand search found no results. Falling back to semantic alternatives for: {$message}");
+
+                Log::info("Strict brand search found no results. Falling back to alternatives for: {$message}");
             }
 
             if ($items->isNotEmpty()) {
+                // Deduplicate: keep the best-scored item per unique make+model combo
+                $items = $this->deduplicateResults($items, $limit);
+
                 Log::info("Hybrid semantic search yielded results for query: {$message}", [
-                    'keywords' => $keywords,
-                    'detected_makes' => $requestedMakes
+                    'detected_makes' => $intent['makes'],
+                    'detected_models' => $intent['models'],
+                    'keywords' => $intent['keywords'],
+                    'result_count' => $items->count(),
                 ]);
                 return $this->formatInventoryCards($items);
             }
@@ -109,35 +123,94 @@ class InventorySearchService
     }
 
     /**
-     * Identifies known inventory brand names within a user's message.
+     * Detect brand names, model names, and remaining keywords from the user's message.
+     * Returns an array with keys: makes, models, keywords.
      */
-    protected function identifyRequestedMakes(string $message, string $tenantId): array
+    protected function detectSearchIntent(string $message, string $tenantId): array
     {
-        // Cache this for performance if inventory is large
-        $availableMakes = InventoryItem::withoutGlobalScope('tenant')
-            ->where('tenant_id', $tenantId)
-            ->whereNotNull('embedding')
-            ->get()
-            ->map(function ($item) {
-                return $item->generated_data['make'] ?? null;
-            })
-            ->filter()
-            ->unique()
-            ->map(fn($m) => strtolower($m))
-            ->toArray();
-
-        $detected = [];
         $messageLower = strtolower($message);
 
+        // Fetch unique make+model pairs from inventory
+        $inventory = InventoryItem::withoutGlobalScope('tenant')
+            ->where('tenant_id', $tenantId)
+            ->whereNotNull('embedding')
+            ->get(['generated_data']);
+
+        $availableMakes = $inventory
+            ->map(fn($i) => strtolower($i->generated_data['make'] ?? ''))
+            ->filter()->unique()->values()->toArray();
+
+        $availableModels = $inventory
+            ->map(fn($i) => strtolower($i->generated_data['model'] ?? ''))
+            ->filter()->unique()->values()->toArray();
+
+        // Detect makes (including partial like "mercedes" matching "mercedes-benz")
+        $detectedMakes = [];
         foreach ($availableMakes as $make) {
-            // Handle variations like "Mercedes-Benz" vs user typing "Mercedes"
             $shortMake = head(explode('-', $make));
             if (str_contains($messageLower, $make) || str_contains($messageLower, $shortMake)) {
-                $detected[] = $make;
+                $detectedMakes[] = $make;
             }
         }
 
-        return $detected;
+        // Detect models (e.g. "m5", "x7", "c300", "m5cs")
+        $detectedModels = [];
+        foreach ($availableModels as $model) {
+            if (str_contains($messageLower, $model)) {
+                $detectedModels[] = $model;
+            }
+        }
+
+        // Remaining keywords: extract meaningful words not already matched as make/model
+        $allMatchedTerms = array_merge($detectedMakes, $detectedModels);
+        $words = array_filter(
+            explode(' ', strtolower(preg_replace('/[^a-z0-9\s]/', '', $message))),
+            function ($w) use ($allMatchedTerms) {
+                if (strlen($w) <= 2) return false;
+                // Skip words already captured as a make or model
+                foreach ($allMatchedTerms as $term) {
+                    if (str_contains($term, $w) || str_contains($w, $term)) return false;
+                }
+                return true;
+            }
+        );
+
+        return [
+            'makes' => $detectedMakes,
+            'models' => $detectedModels,
+            'keywords' => array_values($words),
+        ];
+    }
+
+    /**
+     * Deduplicate results: keep the best-scored item per unique make+model,
+     * then backfill remaining slots with alternatives for diversity.
+     */
+    protected function deduplicateResults($items, int $limit): \Illuminate\Support\Collection
+    {
+        $seen = [];
+        $unique = collect();
+        $duplicates = collect();
+
+        foreach ($items as $item) {
+            $data = $item->generated_data ?? [];
+            $key = strtolower(trim(($data['make'] ?? '') . '|' . ($data['model'] ?? '')));
+
+            if (!isset($seen[$key])) {
+                $seen[$key] = true;
+                $unique->push($item);
+            } else {
+                $duplicates->push($item);
+            }
+        }
+
+        // If we have enough unique items, return those
+        if ($unique->count() >= $limit) {
+            return $unique->take($limit);
+        }
+
+        // Otherwise backfill with duplicates (best-scored first since DB already ordered them)
+        return $unique->merge($duplicates)->take($limit);
     }
 
     /**
