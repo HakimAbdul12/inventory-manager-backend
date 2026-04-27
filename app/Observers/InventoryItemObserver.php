@@ -62,12 +62,18 @@ class InventoryItemObserver
                 $label = $field['label'] ?? ucfirst(str_replace('_', ' ', $key));
                 $value = $data[$key];
                 
-                // Format price if applicable
-                if ($field['type'] === 'number' && stripos($label, 'price') !== false) {
+                // Format the value based on its type
+                if (is_array($value)) {
+                    $value = implode(', ', array_filter($value, fn($v) => !is_array($v)));
+                } elseif (is_bool($value)) {
+                    $value = $value ? 'Yes' : 'No';
+                } elseif ($field['type'] === 'number' && stripos($label, 'price') !== false) {
                     $value = "$" . number_format((float)$value, 0);
                 }
 
-                $parts[] = "{$label}: {$value}";
+                if ($value !== '') {
+                    $parts[] = "{$label}: {$value}";
+                }
             }
         } else {
             // Fallback for items without explicit category fields mapped

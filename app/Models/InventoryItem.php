@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class InventoryItem extends Model
 {
@@ -59,6 +61,28 @@ class InventoryItem extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Get the price history for this inventory item.
+     */
+    public function priceHistories(): HasMany
+    {
+        return $this->hasMany(InventoryPriceHistory::class)->orderBy('created_at', 'desc');
+    }
+
+    /**
+     * Record a price change for this item.
+     */
+    public function recordPriceChange(?float $oldPrice, float $newPrice, string $source = 'manual', ?string $userId = null, ?string $notes = null): InventoryPriceHistory
+    {
+        return $this->priceHistories()->create([
+            'old_price' => $oldPrice,
+            'new_price' => $newPrice,
+            'changed_by' => $userId ?? auth()->id(),
+            'source' => $source,
+            'notes' => $notes,
+        ]);
     }
 
     /**

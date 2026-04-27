@@ -19,6 +19,8 @@ use App\Http\Controllers\Api\ChatAttachmentController;
 use App\Http\Controllers\Api\DealerFeedController;
 use App\Http\Controllers\Api\TenantController;
 use App\Http\Controllers\Api\CrawlJobController;
+use App\Http\Controllers\Api\ActivityLogController;
+use App\Http\Controllers\Api\PermissionController;
 
 
 /*
@@ -75,6 +77,23 @@ Route::prefix('tenants')->middleware(['auth:sanctum', 'tenant'])->group(function
     Route::post('/{id}/members', [TenantController::class, 'addMember']);
     Route::put('/{tenantId}/members/{userId}', [TenantController::class, 'updateMember']);
     Route::delete('/{tenantId}/members/{userId}', [TenantController::class, 'removeMember']);
+    Route::put('/{tenantId}/members/{userId}/roles', [TenantController::class, 'assignUserRoles']);
+    
+    // Custom Roles & Permissions
+    Route::get('/{id}/roles', [TenantController::class, 'roles']);
+    Route::post('/{id}/roles', [TenantController::class, 'createRole']);
+    Route::put('/{id}/roles/{roleId}', [TenantController::class, 'updateRole']);
+    Route::delete('/{id}/roles/{roleId}', [TenantController::class, 'deleteRole']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Permissions Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('permissions')->middleware(['auth:sanctum', 'tenant'])->group(function () {
+    Route::get('/', [PermissionController::class, 'index']); // All available system permissions
+    Route::get('/me', [PermissionController::class, 'userPermissions']); // Current user's resolved permissions
 });
 
 /*
@@ -129,6 +148,7 @@ Route::prefix('inventory')->middleware(['auth:sanctum', 'tenant'])->group(functi
     Route::delete('/{id}/documents/{document}', [InventoryController::class, 'deleteDocument']);
     Route::post('/{id}/analyze', [InventoryController::class, 'analyze']);
     Route::post('/{id}/generate-description', [InventoryController::class, 'generateDescription']);
+    Route::get('/{id}/price-history', [InventoryController::class, 'priceHistory']);
 });
 
 /*
@@ -416,3 +436,15 @@ Route::prefix('crawler')->middleware(['auth:sanctum', 'tenant'])->group(function
     Route::get('/{id}/pages/{pageId}', [CrawlJobController::class, 'pageContent']);
     Route::put('/{id}/pages/{pageId}/toggle', [CrawlJobController::class, 'togglePage']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Activity Log Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('activity-logs')->middleware(['auth:sanctum', 'tenant'])->group(function () {
+    Route::get('/', [ActivityLogController::class, 'index']);
+    Route::get('/{id}', [ActivityLogController::class, 'show']);
+    Route::get('/subject/{type}/{subjectId}', [ActivityLogController::class, 'forSubject']);
+});
+

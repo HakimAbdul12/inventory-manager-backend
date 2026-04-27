@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Models\User;
+use App\Services\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -75,6 +76,7 @@ class AuthController extends Controller
                     'role' => 'dealer',
                     'avatar' => $user->avatar,
                     'banner_image' => $user->banner_image,
+                    'permissions' => app(PermissionService::class)->getUserPermissions($user, $tenant),
                     'tenants' => $user->getTenantsForApi(),
                     'current_tenant' => [
                         'id' => $tenant->id,
@@ -130,6 +132,7 @@ class AuthController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'roles' => $user->getRoleNames(),
+                    'permissions' => app(PermissionService::class)->getUserPermissions($user, $currentTenant),
                     'avatar' => $user->avatar,
                     'banner_image' => $user->banner_image,
                     'company_name' => $user->company_name,
@@ -188,6 +191,7 @@ class AuthController extends Controller
                     'email_verified_at' => $user->email_verified_at,
                     'created_at' => $user->created_at->toIso8601String(),
                     'roles' => $user->getRoleNames(),
+                    'permissions' => app(PermissionService::class)->getUserPermissions($user, $currentTenant),
                     'avatar' => $user->avatar,
                     'dealer_code' => $user->dealer_code,
                     'company_name' => $user->company_name,

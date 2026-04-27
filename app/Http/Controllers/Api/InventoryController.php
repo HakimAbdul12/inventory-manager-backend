@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\InventoryItem;
 use App\Models\InventoryProcess;
+use App\Services\ActivityLogger;
 use App\Services\AIContentService;
 use App\Services\InventoryGenerationService;
 use App\Services\ProcessTrackingService;
@@ -23,15 +24,18 @@ class InventoryController extends Controller
     protected InventoryGenerationService $generationService;
     protected ProcessTrackingService $trackingService;
     protected AIContentService $aiService;
+    protected ActivityLogger $activityLogger;
 
     public function __construct(
         InventoryGenerationService $generationService,
         ProcessTrackingService $trackingService,
-        AIContentService $aiService
+        AIContentService $aiService,
+        ActivityLogger $activityLogger
     ) {
         $this->generationService = $generationService;
         $this->trackingService = $trackingService;
         $this->aiService = $aiService;
+        $this->activityLogger = $activityLogger;
     }
 
     /**
@@ -417,6 +421,11 @@ class InventoryController extends Controller
             'tenant_id' => $request->header('X-Tenant-Id') ?? null, // Fallback for demo
         ]);
 
+        $this->activityLogger
+            ->on($item)
+            ->withDescription("Created new inventory item")
+            ->log('inventory.created');
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -538,10 +547,52 @@ class InventoryController extends Controller
 
         $mergedData = array_merge($currentData, $newData);
 
+        // Track changes for activity log
+        $changes = ActivityLogger::diff($currentData, $newData);
+
+        // Detect price change specifically
+        $oldPrice = $currentData['price'] ?? null;
+        $newPrice = $mergedData['price'] ?? null;
+        $priceChanged = $oldPrice != $newPrice && $newPrice !== null;
+
         $item->update(['generated_data' => $mergedData]);
 
-        if ($request->has('status')) {
+        $statusChanged = false;
+        if ($request->has('status') && $request->status !== $item->status) {
+            $oldStatus = $item->status;
             $item->update(['status' => $request->status]);
+            $statusChanged = true;
+
+            $this->activityLogger
+                ->on($item)
+                ->withDescription("Status changed from {$oldStatus} to {$request->status}")
+                ->withProperties(['old_status' => $oldStatus, 'new_status' => $request->status])
+                ->log('inventory.status_changed');
+        }
+
+        // Log general update (if there were data changes beyond just status)
+        if (!empty($changes)) {
+            $this->activityLogger
+                ->on($item)
+                ->withDescription('Updated inventory details')
+                ->withProperties(['changes' => $changes])
+                ->log('inventory.updated');
+        }
+
+        // Log price change specifically
+        if ($priceChanged) {
+            $this->activityLogger
+                ->on($item)
+                ->withDescription("Price changed from {$oldPrice} to {$newPrice}")
+                ->withProperties(['old_price' => $oldPrice, 'new_price' => $newPrice])
+                ->log('inventory.price_changed');
+                
+            $item->recordPriceChange(
+                oldPrice: $oldPrice !== null ? (float) $oldPrice : null,
+                newPrice: (float) $newPrice,
+                source: 'manual',
+                userId: $request->user()->id ?? null
+            );
         }
 
         return response()->json([
@@ -595,6 +646,12 @@ class InventoryController extends Controller
             ProcessInventoryImageJob::dispatch($image)
                 ->onQueue(config('inventory.queue.name', 'inventory'));
 
+            $this->activityLogger
+                ->on($item)
+                ->withDescription('Uploaded image')
+                ->withProperties(['image_id' => $image->id])
+                ->log('inventory.image_uploaded');
+
             return response()->json([
                 'success' => true,
                 'message' => 'Image uploaded successfully',
@@ -630,6 +687,12 @@ class InventoryController extends Controller
                 ->update(['is_primary' => true]);
         });
 
+        $this->activityLogger
+            ->on($item)
+            ->withDescription('Changed primary image')
+            ->withProperties(['image_id' => $imageId])
+            ->log('inventory.image_primary_changed');
+
         return response()->json(['success' => true, 'message' => 'Primary image updated']);
     }
 
@@ -649,6 +712,7 @@ class InventoryController extends Controller
         }
 
         $wasPrimary = $image->is_primary;
+        $imageData = ['image_id' => $image->id, 'was_primary' => $wasPrimary];
         $image->delete();
 
         if ($wasPrimary) {
@@ -656,6 +720,15 @@ class InventoryController extends Controller
             if ($newPrimary) {
                 $newPrimary->update(['is_primary' => true]);
             }
+        }
+
+        $item = InventoryItem::find($id);
+        if ($item) {
+            $this->activityLogger
+                ->on($item)
+                ->withDescription('Deleted image')
+                ->withProperties($imageData)
+                ->log('inventory.image_deleted');
         }
 
         return response()->json(['success' => true, 'message' => 'Image deleted']);
@@ -693,6 +766,12 @@ class InventoryController extends Controller
             'alt' => $item->getTitleAttribute() . ' - External Image',
             'sizes' => ['original' => $url],
         ]);
+
+        $this->activityLogger
+            ->on($item)
+            ->withDescription('Added external image')
+            ->withProperties(['image_id' => $image->id, 'url' => $url])
+            ->log('inventory.image_uploaded');
 
         return response()->json([
             'success' => true,
@@ -742,6 +821,12 @@ class InventoryController extends Controller
 
         $video = InventoryVideo::create($data);
 
+        $this->activityLogger
+            ->on($item)
+            ->withDescription('Added video: ' . ($video->title ?: $request->type))
+            ->withProperties(['video_id' => $video->id, 'type' => $request->type])
+            ->log('inventory.video_added');
+
         return response()->json([
             'success' => true,
             'message' => 'Video added successfully',
@@ -764,7 +849,17 @@ class InventoryController extends Controller
             Storage::disk('public')->delete($video->path);
         }
 
+        $videoData = ['video_id' => $video->id, 'type' => $video->type];
         $video->delete();
+
+        $item = InventoryItem::find($id);
+        if ($item) {
+            $this->activityLogger
+                ->on($item)
+                ->withDescription('Deleted video')
+                ->withProperties($videoData)
+                ->log('inventory.video_deleted');
+        }
 
         return response()->json(['success' => true, 'message' => 'Video deleted']);
     }
@@ -805,6 +900,12 @@ class InventoryController extends Controller
             'size' => $file->getSize(),
         ]);
 
+        $this->activityLogger
+            ->on($item)
+            ->withDescription('Uploaded document: ' . $request->name)
+            ->withProperties(['document_id' => $document->id, 'name' => $request->name, 'type' => $request->type])
+            ->log('inventory.document_uploaded');
+
         return response()->json([
             'success' => true,
             'message' => 'Document uploaded successfully',
@@ -827,7 +928,17 @@ class InventoryController extends Controller
             Storage::disk('public')->delete($document->path);
         }
 
+        $docData = ['document_id' => $document->id, 'name' => $document->name];
         $document->delete();
+
+        $item = InventoryItem::find($id);
+        if ($item) {
+            $this->activityLogger
+                ->on($item)
+                ->withDescription('Deleted document')
+                ->withProperties($docData)
+                ->log('inventory.document_deleted');
+        }
 
         return response()->json(['success' => true, 'message' => 'Document deleted']);
     }
@@ -850,6 +961,12 @@ class InventoryController extends Controller
                 'confidence_score' => $analysis['score'] ?? 0,
                 'analysis_results' => $analysis,
             ]);
+
+            $this->activityLogger
+                ->on($item)
+                ->withDescription('Ran AI analysis (score: ' . $item->confidence_score . ')')
+                ->withProperties(['score' => $item->confidence_score])
+                ->log('inventory.analyzed');
 
             return response()->json([
                 'success' => true,
@@ -880,6 +997,11 @@ class InventoryController extends Controller
         try {
             $description = $this->aiService->generateDescription($item);
 
+            $this->activityLogger
+                ->on($item)
+                ->withDescription('Generated AI description')
+                ->log('inventory.description_generated');
+
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -889,9 +1011,32 @@ class InventoryController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Description generation failed: ' . $e->getMessage(),
+                'message' => 'Failed to generate description: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Get the price history for an inventory item.
+     */
+    public function priceHistory(string $id, Request $request): \Illuminate\Http\JsonResponse
+    {
+        $item = InventoryItem::findOrFail($id);
+
+        $history = $item->priceHistories()
+            ->with(['user:id,name'])
+            ->paginate($request->input('per_page', 15));
+
+        return response()->json([
+            'success' => true,
+            'data' => $history->items(),
+            'pagination' => [
+                'currentPage' => $history->currentPage(),
+                'lastPage' => $history->lastPage(),
+                'perPage' => $history->perPage(),
+                'total' => $history->total(),
+            ],
+        ]);
     }
 
     /**

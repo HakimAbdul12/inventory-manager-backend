@@ -3,9 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Tenant;
+use App\Models\TenantRole;
 use App\Models\TenantUser;
 use App\Models\User;
+use App\Services\PermissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -47,6 +48,9 @@ class TenantController extends Controller
 
         // Add the creator as owner
         $tenant->addMember($request->user(), TenantUser::ROLE_OWNER);
+
+        // Seed default roles for this new tenant
+        app(PermissionService::class)->syncDefaultRoles($tenant);
 
         // Switch to the new tenant
         $request->user()->switchTenant($tenant->id);
@@ -401,5 +405,180 @@ class TenantController extends Controller
         $tenant->delete();
 
         return response()->json(['message' => 'Workspace deleted.']);
+    }
+
+    /**
+     * Get all roles for a tenant.
+     */
+    public function roles(string $id): JsonResponse
+    {
+        $tenant = Tenant::findOrFail($id);
+
+        $roles = TenantRole::withoutGlobalScope('tenant')
+            ->where('tenant_id', $tenant->id)
+            ->with('permissions:id,key')
+            ->get()
+            ->map(function ($role) {
+                return [
+                    'id' => $role->id,
+                    'name' => $role->name,
+                    'slug' => $role->slug,
+                    'description' => $role->description,
+                    'is_system' => $role->is_system,
+                    'level' => $role->level,
+                    'permissions' => $role->permissions->pluck('key'),
+                ];
+            });
+
+        return response()->json(['data' => $roles]);
+    }
+
+    /**
+     * Create a new custom role.
+     */
+    public function createRole(Request $request, string $id): JsonResponse
+    {
+        $tenant = Tenant::findOrFail($id);
+        
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'permissions' => ['array'],
+            'permissions.*' => ['string', 'exists:tenant_permissions,key'],
+        ]);
+
+        $slug = Str::slug($validated['name']);
+        
+        // Ensure slug is unique for this tenant
+        if (TenantRole::withoutGlobalScope('tenant')->where('tenant_id', $tenant->id)->where('slug', $slug)->exists()) {
+            return response()->json(['message' => 'A role with this name already exists.'], 422);
+        }
+
+        $role = TenantRole::withoutGlobalScope('tenant')->create([
+            'tenant_id' => $tenant->id,
+            'name' => $validated['name'],
+            'slug' => $slug,
+            'description' => $validated['description'] ?? null,
+            'is_system' => false,
+            'level' => 0, // Custom roles default to lowest hierarchy level
+        ]);
+
+        if (!empty($validated['permissions'])) {
+            $permIds = \App\Models\TenantPermission::whereIn('key', $validated['permissions'])->pluck('id');
+            $role->permissions()->sync($permIds);
+        }
+
+        return response()->json([
+            'message' => 'Role created successfully.',
+            'data' => array_merge($role->toArray(), ['permissions' => $validated['permissions'] ?? []])
+        ], 201);
+    }
+
+    /**
+     * Update a role's details and permissions.
+     */
+    public function updateRole(Request $request, string $id, string $roleId): JsonResponse
+    {
+        $tenant = Tenant::findOrFail($id);
+        $role = TenantRole::withoutGlobalScope('tenant')
+            ->where('tenant_id', $tenant->id)
+            ->findOrFail($roleId);
+
+        $validated = $request->validate([
+            'name' => ['sometimes', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'permissions' => ['sometimes', 'array'],
+            'permissions.*' => ['string', 'exists:tenant_permissions,key'],
+        ]);
+
+        $updateData = [];
+        if (isset($validated['name'])) {
+            $updateData['name'] = $validated['name'];
+            if (!$role->is_system) {
+                // System role slugs should not be changed
+                $updateData['slug'] = Str::slug($validated['name']);
+            }
+        }
+        if (array_key_exists('description', $validated)) {
+            $updateData['description'] = $validated['description'];
+        }
+
+        if (!empty($updateData)) {
+            $role->update($updateData);
+        }
+
+        if (isset($validated['permissions'])) {
+            $permIds = \App\Models\TenantPermission::whereIn('key', $validated['permissions'])->pluck('id');
+            $role->permissions()->sync($permIds);
+            
+            // Clear cache for all users with this role in this tenant
+            $userIds = $role->users()->pluck('users.id');
+            foreach ($userIds as $userId) {
+                $user = User::find($userId);
+                if ($user) {
+                    app(PermissionService::class)->clearUserCache($user, $tenant);
+                }
+            }
+        }
+
+        return response()->json(['message' => 'Role updated successfully.']);
+    }
+
+    /**
+     * Delete a custom role.
+     */
+    public function deleteRole(Request $request, string $id, string $roleId): JsonResponse
+    {
+        $tenant = Tenant::findOrFail($id);
+        $role = TenantRole::withoutGlobalScope('tenant')
+            ->where('tenant_id', $tenant->id)
+            ->findOrFail($roleId);
+
+        if ($role->is_system) {
+            return response()->json(['message' => 'System roles cannot be deleted.'], 403);
+        }
+
+        if ($role->users()->count() > 0) {
+            return response()->json(['message' => 'Cannot delete a role that is assigned to users.'], 422);
+        }
+
+        $role->delete();
+
+        return response()->json(['message' => 'Role deleted successfully.']);
+    }
+
+    /**
+     * Assign specific roles to a user in a tenant.
+     */
+    public function assignUserRoles(Request $request, string $tenantId, string $userId): JsonResponse
+    {
+        $tenant = Tenant::findOrFail($tenantId);
+        $user = User::findOrFail($userId);
+
+        if (!$tenant->hasMember($user)) {
+            return response()->json(['message' => 'User is not a member of this workspace.'], 404);
+        }
+
+        $validated = $request->validate([
+            'role_ids' => ['required', 'array'],
+            'role_ids.*' => ['string', 'exists:tenant_roles,id'],
+        ]);
+
+        // Sync via pivot table
+        $syncData = [];
+        foreach ($validated['role_ids'] as $roleId) {
+            // Verify role belongs to this tenant
+            $role = TenantRole::withoutGlobalScope('tenant')->find($roleId);
+            if ($role && $role->tenant_id === $tenant->id) {
+                $syncData[$roleId] = ['tenant_id' => $tenant->id, 'assigned_by' => $request->user()->id];
+            }
+        }
+
+        $user->tenantRoles()->wherePivot('tenant_id', $tenant->id)->sync($syncData);
+
+        // Clear user's permission cache
+        app(PermissionService::class)->clearUserCache($user, $tenant);
+
+        return response()->json(['message' => 'Roles assigned successfully.']);
     }
 }

@@ -84,6 +84,7 @@ class CategoryController extends Controller
             'fields.*.required' => 'boolean',
             'fields.*.options' => 'nullable|array',
             'fields.*.other_names' => 'nullable|array',
+            'fields.*.generated' => 'nullable|boolean',
         ]);
 
         $category->update($validated);

@@ -3,6 +3,8 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Models\Tenant;
+use App\Models\TenantRole;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -188,6 +190,20 @@ class User extends Authenticatable
     public function currentTenant(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Tenant::class, 'current_tenant_id');
+    }
+
+    /**
+     * Get the granular roles this user has across all tenants.
+     * Note: Filter by tenant_id when querying for a specific tenant.
+     */
+    public function tenantRoles(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            TenantRole::class,
+            'tenant_user_roles',
+            'user_id',
+            'tenant_role_id'
+        )->withPivot(['tenant_id', 'assigned_by'])->withTimestamps();
     }
 
     /**
