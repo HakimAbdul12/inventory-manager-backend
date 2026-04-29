@@ -53,6 +53,8 @@ return [
         'sftp',
         'crawler',
         'crawler/*',
+        'tenants/*',
+        'tenants',
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
