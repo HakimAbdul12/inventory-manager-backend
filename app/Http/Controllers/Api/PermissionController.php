@@ -23,7 +23,15 @@ class PermissionController extends Controller
      */
     public function index(): JsonResponse
     {
-        $permissions = TenantPermission::orderBy('category')->orderBy('label')->get();
+        $request = request();
+        $type = $request->query('type'); // optional: 'high' or 'low'
+
+        $query = TenantPermission::orderBy('category')->orderBy('label');
+        if ($type && in_array($type, ['high', 'low'])) {
+            $query->where('type', $type);
+        }
+
+        $permissions = $query->get();
 
         $grouped = $permissions->groupBy('category')->map(function ($group) {
             return $group->map(function ($perm) {
@@ -32,6 +40,7 @@ class PermissionController extends Controller
                     'key' => $perm->key,
                     'label' => $perm->label,
                     'description' => $perm->description,
+                    'type' => $perm->type,
                 ];
             });
         });

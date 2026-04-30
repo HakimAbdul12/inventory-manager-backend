@@ -33,6 +33,10 @@ class CheckTenantPermission
         $tenant = app()->bound('current_tenant') ? app('current_tenant') : null;
 
         if (!$tenant) {
+            // If there's no tenant context, allow only low-level/system permissions
+            if ($this->permissionService->userCan($permission, $user, null)) {
+                return $next($request);
+            }
             return response()->json(['message' => 'No active tenant context.'], 403);
         }
 

@@ -55,6 +55,10 @@ return [
         'crawler/*',
         'tenants/*',
         'tenants',
+        'permissions',
+        'permissions/*',
+        'system',
+        'system/*',
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

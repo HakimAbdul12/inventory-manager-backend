@@ -44,6 +44,7 @@ class User extends Authenticatable
         'is_public_profile',
         'social_links',
         'last_active_at',
+        'is_super_admin',
         'current_tenant_id',
     ];
 
@@ -94,6 +95,7 @@ class User extends Authenticatable
             'specialties' => 'array',
             'social_links' => 'array',
             'is_public_profile' => 'boolean',
+            'is_super_admin' => 'boolean',
         ];
     }
 
@@ -143,6 +145,19 @@ class User extends Authenticatable
     public function receivedConnections(): HasMany
     {
         return $this->hasMany(DealerConnection::class, 'receiver_id');
+    }
+
+    /**
+     * System-level roles assigned to this user (tenant_role.tenant_id is null)
+     */
+    public function systemRoles(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            TenantRole::class,
+            'system_role_user',
+            'user_id',
+            'tenant_role_id'
+        )->withTimestamps();
     }
 
     /**
@@ -211,9 +226,15 @@ class User extends Authenticatable
      */
     public function switchTenant(string $tenantId): bool
     {
-        // Verify user belongs to this tenant
-        if (!$this->tenants()->where('tenants.id', $tenantId)->exists()) {
-            return false;
+        // Super admins can switch to any tenant even if not a member
+        $tenantExists = \App\Models\Tenant::where('id', $tenantId)->exists();
+        if (!$tenantExists) return false;
+
+        if (!$this->is_super_admin) {
+            // Verify user belongs to this tenant
+            if (!$this->tenants()->where('tenants.id', $tenantId)->exists()) {
+                return false;
+            }
         }
 
         $this->update(['current_tenant_id' => $tenantId]);

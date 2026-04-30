@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\TenantController;
 use App\Http\Controllers\Api\CrawlJobController;
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\PermissionController;
+use App\Http\Controllers\Api\SystemRoleController;
 
 
 /*
@@ -78,7 +79,7 @@ Route::prefix('tenants')->middleware(['auth:sanctum', 'tenant'])->group(function
     Route::put('/{tenantId}/members/{userId}', [TenantController::class, 'updateMember']);
     Route::delete('/{tenantId}/members/{userId}', [TenantController::class, 'removeMember']);
     Route::put('/{tenantId}/members/{userId}/roles', [TenantController::class, 'assignUserRoles']);
-    
+
     // Custom Roles & Permissions
     Route::get('/{id}/roles', [TenantController::class, 'roles']);
     Route::post('/{id}/roles', [TenantController::class, 'createRole']);
@@ -213,6 +214,14 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'role:admin'])->group(functi
     Route::get('/users', [\App\Http\Controllers\Api\AdminUserController::class, 'index']);
     Route::post('/users/{id}/block', [\App\Http\Controllers\Api\AdminUserController::class, 'toggleBlock']);
     Route::delete('/users/{id}', [\App\Http\Controllers\Api\AdminUserController::class, 'destroy']);
+});
+
+// System-level role management (super admin only)
+Route::prefix('system')->middleware(['auth:sanctum'])->group(function () {
+    Route::get('/roles', [SystemRoleController::class, 'index']);
+    Route::post('/roles', [SystemRoleController::class, 'store']);
+    Route::put('/roles/{roleId}', [SystemRoleController::class, 'update']);
+    Route::delete('/roles/{roleId}', [SystemRoleController::class, 'destroy']);
 });
 
 /*

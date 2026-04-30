@@ -50,6 +50,12 @@ class TenantPermissionSeeder extends Seeder
             ['key' => 'workspace.settings', 'label' => 'Manage Workspace Settings', 'category' => 'Workspace'],
             ['key' => 'workspace.members', 'label' => 'Manage Members', 'category' => 'Workspace'],
             ['key' => 'workspace.roles', 'label' => 'Manage Roles & Permissions', 'category' => 'Workspace'],
+            
+            // System-level (low) permissions - managed by super admin
+            ['key' => 'system.manage_roles', 'label' => 'Manage System Roles', 'category' => 'System', 'type' => 'low'],
+            ['key' => 'system.manage_permissions', 'label' => 'Manage System Permissions', 'category' => 'System', 'type' => 'low'],
+            ['key' => 'system.view_all_tenants', 'label' => 'View All Tenants', 'category' => 'System', 'type' => 'low'],
+            ['key' => 'system.switch_tenant', 'label' => 'Switch Tenant (Admin)', 'category' => 'System', 'type' => 'low'],
         ];
 
         // Sync permissions
@@ -57,11 +63,11 @@ class TenantPermissionSeeder extends Seeder
         foreach ($permissions as $p) {
             $perm = TenantPermission::firstOrCreate(
                 ['key' => $p['key']],
-                ['label' => $p['label'], 'category' => $p['category']]
+                ['label' => $p['label'], 'category' => $p['category'], 'type' => $p['type'] ?? 'high']
             );
-            // Update label/category if changed
-            if ($perm->label !== $p['label'] || $perm->category !== $p['category']) {
-                $perm->update(['label' => $p['label'], 'category' => $p['category']]);
+            // Update label/category/type if changed
+            if ($perm->label !== $p['label'] || $perm->category !== $p['category'] || $perm->type !== ($p['type'] ?? 'high')) {
+                $perm->update(['label' => $p['label'], 'category' => $p['category'], 'type' => $p['type'] ?? 'high']);
             }
             $dbPerms[$p['key']] = $perm->id;
         }
@@ -117,7 +123,15 @@ class TenantPermissionSeeder extends Seeder
             ],
         ];
 
+        // Separate high vs low level permission ids
         $allPermIds = array_values($dbPerms);
+        $highPermIds = [];
+        $lowPermIds = [];
+        foreach ($dbPerms as $key => $id) {
+            $perm = TenantPermission::find($id);
+            if ($perm && $perm->type === 'low') $lowPermIds[] = $id;
+            else $highPermIds[] = $id;
+        }
 
         foreach ($roles as $slug => $data) {
             $role = TenantRole::withoutGlobalScope('tenant')->firstOrCreate(
@@ -142,19 +156,28 @@ class TenantPermissionSeeder extends Seeder
             // Sync role permissions
             $permsToSync = [];
             if (in_array('*', $data['permissions'])) {
-                $permsToSync = $allPermIds;
+                // For system roles, we only include low-level perms. For tenant templates '*' means all high-level perms when copied into tenant.
+                $permsToSync = $lowPermIds ?: $highPermIds;
             } elseif (!empty($data['permissions']) && str_starts_with($data['permissions'][0], '!')) {
                 // Exclude pattern (e.g. ['!workspace.roles'])
                 $excludeKeys = array_map(fn($p) => substr($p, 1), $data['permissions']);
                 foreach ($dbPerms as $key => $id) {
                     if (!in_array($key, $excludeKeys)) {
-                        $permsToSync[] = $id;
+                        // Only attach low-level perms to system roles
+                        $perm = TenantPermission::find($id);
+                        if ($perm && $perm->type === 'low') {
+                            $permsToSync[] = $id;
+                        }
                     }
                 }
             } else {
                 foreach ($data['permissions'] as $key) {
                     if (isset($dbPerms[$key])) {
-                        $permsToSync[] = $dbPerms[$key];
+                        $perm = TenantPermission::find($dbPerms[$key]);
+                        // Ensure system roles only get low-level permissions
+                        if ($perm && $perm->type === 'low') {
+                            $permsToSync[] = $dbPerms[$key];
+                        }
                     }
                 }
             }

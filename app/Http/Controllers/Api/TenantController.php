@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tenant;
 use App\Models\TenantRole;
 use App\Models\TenantUser;
 use App\Models\User;
@@ -20,11 +21,35 @@ class TenantController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $tenants = $request->user()->getTenantsForApi();
+        $user = $request->user();
+
+        // If super admin, return all tenants (they may not be a member)
+        if ($user->is_super_admin) {
+            $all = Tenant::all()->map(function (Tenant $tenant) use ($user) {
+                // Determine if the user is a member and include role if present
+                $membership = $user->tenants()->where('tenants.id', $tenant->id)->first();
+                return [
+                    'id' => $tenant->id,
+                    'name' => $tenant->name,
+                    'slug' => $tenant->slug,
+                    'logo' => $tenant->logo,
+                    'banner_image' => $tenant->banner_image,
+                    'role' => $membership?->pivot?->role ?? null,
+                    'member_count' => $tenant->users()->count(),
+                ];
+            })->toArray();
+
+            return response()->json([
+                'data' => $all,
+                'current_tenant_id' => $user->current_tenant_id,
+            ]);
+        }
+
+        $tenants = $user->getTenantsForApi();
 
         return response()->json([
             'data' => $tenants,
-            'current_tenant_id' => $request->user()->current_tenant_id,
+            'current_tenant_id' => $user->current_tenant_id,
         ]);
     }
 
@@ -464,7 +489,13 @@ class TenantController extends Controller
         ]);
 
         if (!empty($validated['permissions'])) {
-            $permIds = \App\Models\TenantPermission::whereIn('key', $validated['permissions'])->pluck('id');
+            // Ensure tenant roles can only include high-level permissions
+            $perms = \App\Models\TenantPermission::whereIn('key', $validated['permissions'])->get();
+            $invalid = $perms->where('type', 'low')->pluck('key')->toArray();
+            if (!empty($invalid)) {
+                return response()->json(['message' => 'Cannot assign system-level permissions to tenant roles.', 'invalid' => $invalid], 422);
+            }
+            $permIds = $perms->pluck('id');
             $role->permissions()->sync($permIds);
         }
 
@@ -508,7 +539,13 @@ class TenantController extends Controller
         }
 
         if (isset($validated['permissions'])) {
-            $permIds = \App\Models\TenantPermission::whereIn('key', $validated['permissions'])->pluck('id');
+            // Ensure tenant roles can only include high-level permissions
+            $perms = \App\Models\TenantPermission::whereIn('key', $validated['permissions'])->get();
+            $invalid = $perms->where('type', 'low')->pluck('key')->toArray();
+            if (!empty($invalid)) {
+                return response()->json(['message' => 'Cannot assign system-level permissions to tenant roles.', 'invalid' => $invalid], 422);
+            }
+            $permIds = $perms->pluck('id');
             $role->permissions()->sync($permIds);
             
             // Clear cache for all users with this role in this tenant

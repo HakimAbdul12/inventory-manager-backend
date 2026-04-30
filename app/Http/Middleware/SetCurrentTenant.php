@@ -32,8 +32,12 @@ class SetCurrentTenant
         $tenant = null;
 
         if ($tenantId) {
-            // Validate user belongs to this tenant
-            $tenant = $user->tenants()->where('tenants.id', $tenantId)->first();
+            if ($user->is_super_admin) {
+                $tenant = Tenant::find($tenantId);
+            } else {
+                // Validate user belongs to this tenant
+                $tenant = $user->tenants()->where('tenants.id', $tenantId)->first();
+            }
         }
 
         // Fallback: use first tenant if no valid tenant found
@@ -50,8 +54,12 @@ class SetCurrentTenant
             // Bind tenant to app container for global scope access
             app()->instance('current_tenant', $tenant);
 
-            // Store role for easy access
-            app()->instance('current_tenant_role', $tenant->pivot->role);
+            // Determine the tenant role safely; super admins may not have a tenant pivot.
+            $tenantRole = $user->is_super_admin
+                ? 'super_admin'
+                : ($tenant->pivot->role ?? $tenant->getMemberRole($user));
+
+            app()->instance('current_tenant_role', $tenantRole);
         }
 
         return $next($request);

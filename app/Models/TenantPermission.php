@@ -17,6 +17,7 @@ class TenantPermission extends Model
         'label',
         'description',
         'category',
+        'type', // 'high' or 'low'
     ];
 
     public function roles(): BelongsToMany
@@ -32,5 +33,21 @@ class TenantPermission extends Model
     public function scopeInCategory(Builder $query, string $category): Builder
     {
         return $query->where('category', $category);
+    }
+
+    /**
+     * Scope to only low-level (system) permissions.
+     */
+    public function scopeLowLevel(Builder $query): Builder
+    {
+        return $query->where('type', 'low');
+    }
+
+    /**
+     * Scope to only high-level (tenant) permissions.
+     */
+    public function scopeHighLevel(Builder $query): Builder
+    {
+        return $query->where('type', 'high');
     }
 }
