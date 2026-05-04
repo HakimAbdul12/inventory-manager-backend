@@ -18,6 +18,8 @@ use App\Models\InventoryImage;
 use App\Models\InventoryVideo;
 use App\Models\InventoryDocument;
 use App\Jobs\ProcessInventoryImageJob;
+use App\Services\OpenRouterClient;
+use Illuminate\Support\Facades\Log;
 
 class InventoryController extends Controller
 {
@@ -25,17 +27,20 @@ class InventoryController extends Controller
     protected ProcessTrackingService $trackingService;
     protected AIContentService $aiService;
     protected ActivityLogger $activityLogger;
+    protected OpenRouterClient $openRouterClient;
 
     public function __construct(
         InventoryGenerationService $generationService,
         ProcessTrackingService $trackingService,
         AIContentService $aiService,
-        ActivityLogger $activityLogger
+        ActivityLogger $activityLogger,
+        OpenRouterClient $openRouterClient
     ) {
         $this->generationService = $generationService;
         $this->trackingService = $trackingService;
         $this->aiService = $aiService;
         $this->activityLogger = $activityLogger;
+        $this->openRouterClient = $openRouterClient;
     }
 
     /**
@@ -1050,6 +1055,201 @@ class InventoryController extends Controller
         return response()->json([
             'success' => true,
             'data' => ['count' => $query->count()],
+        ]);
+    }
+
+    /**
+     * Generate AI images for an inventory item with custom instructions.
+     */
+    public function generateAIImages(Request $request, string $id): JsonResponse
+    {
+        $item = InventoryItem::with(['category'])->find($id);
+
+        if (!$item) {
+            return response()->json(['success' => false, 'message' => 'Item not found'], 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'instructions' => 'nullable|string|max:1000',
+            'orientations' => 'nullable|array',
+            'orientations.*' => 'string',
+            'count' => 'nullable|integer|min:1|max:8',
+            'referenceImages' => 'nullable|array',
+            'referenceImages.*' => 'string', // Base64 strings
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+        }
+
+        try {
+            $count = $request->input('count', 1);
+            $instructions = $request->input('instructions');
+            $orientations = $request->input('orientations', []);
+            $referenceImages = $request->input('referenceImages', []);
+
+            // Mapping for orientations to descriptive text
+            $orientationMap = [
+                'f' => 'front view',
+                'r' => 'rear view',
+                'l' => 'left side profile',
+                'rt' => 'right side profile',
+                'fl' => 'front-left 3/4 angle',
+                'fr' => 'front-right 3/4 angle',
+                'rl' => 'rear-left 3/4 angle',
+                'rr' => 'rear-right 3/4 angle',
+                'int' => 'interior dashboard and cabin',
+                'eng' => 'engine bay detail',
+                'fw' => 'front-wheel detail',
+                'rw' => 'rear-wheel detail',
+            ];
+
+            // Build detailed vehicle description from all available inventory data
+            $generatedData = $item->generated_data ?? [];
+            $vehicleDesc = "a professional automotive photograph of a ";
+            
+            // Collect all non-null, non-empty values from generated data
+            $details = [];
+            foreach ($generatedData as $key => $value) {
+                if ($value && !is_array($value) && !in_array($key, ['description', 'title', 'system_id'])) {
+                    $details[] = str_replace('_', ' ', $key) . ": " . $value;
+                }
+            }
+            
+            if (!empty($details)) {
+                $vehicleDesc .= implode(', ', $details) . ". ";
+            } else {
+                $vehicleDesc .= ($generatedData['year'] ?? '') . " " . 
+                               ($generatedData['make'] ?? '') . " " . 
+                               ($generatedData['model'] ?? '') . ". ";
+            }
+
+            $generatedImages = [];
+            $targets = !empty($orientations) ? $orientations : array_fill(0, $count, null);
+
+            foreach ($targets as $targetOrientation) {
+                $prompt = $vehicleDesc;
+                
+                if ($targetOrientation && isset($orientationMap[$targetOrientation])) {
+                    $prompt .= "The photo shows the " . $orientationMap[$targetOrientation] . ". ";
+                }
+
+                // Custom instructions ALWAYS take precedence - append them last
+                if ($instructions) {
+                    $prompt .= "IMPORTANT CUSTOM INSTRUCTIONS: " . $instructions;
+                }
+
+                $prompt .= " High-end commercial automotive photography, 8k resolution, cinematic lighting, sharp focus.";
+
+                $options = [];
+                if (!empty($referenceImages)) {
+                    // Use a reference image if provided
+                    $options['inputImage'] = $referenceImages[array_rand($referenceImages)];
+                }
+
+                $imageData = $this->openRouterClient->generateImage($prompt, $options);
+
+                if ($imageData) {
+                    $filename = "inventory/{$item->id}/ai_gen_" . uniqid() . ".jpg";
+                    
+                    $parts = explode(',', $imageData, 2);
+                    $content = count($parts) === 2 ? base64_decode($parts[1]) : base64_decode($imageData);
+                    
+                    Storage::disk('public')->put($filename, $content);
+
+                    $image = InventoryImage::create([
+                        'inventory_item_id' => $item->id,
+                        'path' => $filename,
+                        'prompt' => $prompt,
+                        'is_primary' => $item->images()->count() === 0 && empty($generatedImages),
+                        'is_approved' => false,
+                        'processing_status' => InventoryImage::STATUS_PENDING_APPROVAL,
+                        'generated_by' => 'ai_custom',
+                        'alt' => $item->title . ' - ' . ($orientationMap[$targetOrientation] ?? 'AI Generated'),
+                        'sizes' => ['original' => Storage::url($filename)],
+                    ]);
+
+                    $generatedImages[] = $image;
+                }
+            }
+
+            $this->activityLogger
+                ->on($item)
+                ->withDescription('Generated AI images')
+                ->withProperties(['count' => count($generatedImages)])
+                ->log('inventory.ai_images_generated');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Images generated successfully. Please approve them to continue.',
+                'data' => $generatedImages,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Custom AI image generation failed', [
+                'item_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate images: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Approve an AI generated image and start processing.
+     */
+    public function approveImage(Request $request, string $id, string $imageId): JsonResponse
+    {
+        $image = InventoryImage::where('inventory_item_id', $id)->find($imageId);
+
+        if (!$image) {
+            return response()->json(['success' => false, 'message' => 'Image not found'], 404);
+        }
+
+        $image->update([
+            'is_approved' => true,
+            'processing_status' => InventoryImage::STATUS_PENDING,
+        ]);
+
+        ProcessInventoryImageJob::dispatch($image)
+            ->onQueue(config('inventory.queue.name', 'inventory'));
+
+        $this->activityLogger
+            ->on($image->inventoryItem)
+            ->withDescription('Approved AI image')
+            ->withProperties(['image_id' => $imageId])
+            ->log('inventory.image_approved');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Image approved and processing started',
+            'data' => $image,
+        ]);
+    }
+
+    /**
+     * Reject and delete an AI generated image.
+     */
+    public function rejectImage(Request $request, string $id, string $imageId): JsonResponse
+    {
+        $image = InventoryImage::where('inventory_item_id', $id)->find($imageId);
+
+        if (!$image) {
+            return response()->json(['success' => false, 'message' => 'Image not found'], 404);
+        }
+
+        if (Storage::disk('public')->exists($image->path)) {
+            Storage::disk('public')->delete($image->path);
+        }
+
+        $image->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Image rejected and deleted',
         ]);
     }
 

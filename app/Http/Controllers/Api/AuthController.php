@@ -47,7 +47,7 @@ class AuthController extends Controller
             'phone' => $request->phone,
         ]);
 
-        $user->assignRole('dealer');
+        $user->assignRole('owner');
 
         // Create a default workspace for the user
         $workspaceName = $request->company_name ?: $user->name . "'s Workspace";

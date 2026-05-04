@@ -149,6 +149,9 @@ Route::prefix('inventory')->middleware(['auth:sanctum', 'tenant'])->group(functi
     Route::delete('/{id}/documents/{document}', [InventoryController::class, 'deleteDocument']);
     Route::post('/{id}/analyze', [InventoryController::class, 'analyze']);
     Route::post('/{id}/generate-description', [InventoryController::class, 'generateDescription']);
+    Route::post('/{id}/images/generate', [InventoryController::class, 'generateAIImages']);
+    Route::post('/{id}/images/{image}/approve', [InventoryController::class, 'approveImage']);
+    Route::post('/{id}/images/{image}/reject', [InventoryController::class, 'rejectImage']);
     Route::get('/{id}/price-history', [InventoryController::class, 'priceHistory']);
 });
 

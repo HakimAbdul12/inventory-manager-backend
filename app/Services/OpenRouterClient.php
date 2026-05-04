@@ -11,6 +11,7 @@ class OpenRouterClient
     protected string $baseUrl;
     protected string $apiKey;
     protected string $model;
+    protected string $imageModel;
     protected int $timeout;
     protected int $maxRetries;
 
@@ -19,6 +20,7 @@ class OpenRouterClient
         $this->baseUrl = config('openrouter.base_url', 'https://openrouter.ai/api/v1');
         $this->apiKey = config('openrouter.api_key', env('OPENROUTER_API_KEY'));
         $this->model = config('openrouter.model', 'liquid/lfm-2.5-1.2b-thinking:free');
+        $this->imageModel = config('openrouter.image_model', 'google/gemini-3.1-flash-image-preview');
         $this->timeout = config('openrouter.timeout', 60);
         $this->maxRetries = config('openrouter.max_retries', 3);
     }
@@ -218,7 +220,8 @@ class OpenRouterClient
      */
     public function getModels(): array
     {
-        $response = $this->client()->get('/models');
+        $url = rtrim($this->baseUrl, '/') . '/models';
+        $response = $this->client()->get($url);
 
         if (!$response->successful()) {
             throw new \RuntimeException("Failed to fetch models: {$response->status()}");
@@ -251,10 +254,11 @@ class OpenRouterClient
             'messages' => [
                 [
                     'role' => 'user',
-                    // If inputImage is present, use array format. Otherwise use string for compatibility if model expects it (though array is usually fine)
+                    // If inputImage is present, use array format. Otherwise use string for compatibility
                     'content' => $inputImage ? $messageContent : $prompt
                 ],
             ],
+            'modalities' => ['image'],
         ];
 
         Log::debug('OpenRouter image generation request', [

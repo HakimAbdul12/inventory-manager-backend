@@ -19,7 +19,7 @@ return [
 
     'vision_model' => env('OPENROUTER_VISION_MODEL', 'nvidia/nemotron-nano-12b-v2-vl:free'),
 
-    'image_model' => env('OPENROUTER_IMAGE_MODEL', 'stabilityai/stable-diffusion-2-1'),
+    'image_model' => env('OPENROUTER_IMAGE_MODEL', 'google/gemini-3.1-flash-image-preview'),
 
     /*
     |--------------------------------------------------------------------------

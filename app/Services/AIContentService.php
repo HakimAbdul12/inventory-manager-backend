@@ -617,11 +617,11 @@ Generate a high-end, professional sales description for a {$category->name} list
 ## REQUIREMENTS:
 1. Format correctly using HTML (paragraphs, bullet points for features, bold for emphasis).
 2. Start with an engaging hook.
-3. Highlight key specifications and condition.
-4. Include a "Why Choose This Vehicle" section.
-5. Wrap it up with a subtle call to action.
-6. Language: Professional, trustworthy, and persuasive.
-7. Tone: Premium and descriptive.
+3. STRICTLY highlight ONLY the exact specifications and condition provided above. DO NOT invent, hallucinate, or assume ANY features, engine specs, transmission types, colors, or interior/exterior details that are not explicitly listed in the details section.
+4. Pay attention to the Body Type and Vehicle Type. If it is a Motorcycle, use motorcycle terminology (do not mention doors, leather seats, steering wheels, etc.).
+5. Include a "Why Choose This Vehicle" section based only on actual facts provided.
+6. Wrap it up with a subtle call to action.
+7. Tone: Professional, trustworthy, and persuasive.
 
 Return ONLY the HTML body content.
 PROMPT;

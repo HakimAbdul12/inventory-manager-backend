@@ -19,6 +19,7 @@ class InventoryImage extends Model
         'generated_by',
         'alt',
         'is_primary',
+        'is_approved',
         'processing_status',
         'sizes',
     ];
@@ -26,11 +27,13 @@ class InventoryImage extends Model
     protected $appends = ['url'];
 
     protected $casts = [
+        'is_approved' => 'boolean',
         'is_primary' => 'boolean',
         'sizes' => 'array',
     ];
 
     public const STATUS_PENDING = 'pending';
+    public const STATUS_PENDING_APPROVAL = 'pending_approval';
     public const STATUS_PROCESSING = 'processing';
     public const STATUS_COMPLETED = 'completed';
     public const STATUS_FAILED = 'failed';

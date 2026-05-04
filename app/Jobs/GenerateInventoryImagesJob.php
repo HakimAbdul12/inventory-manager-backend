@@ -139,7 +139,8 @@ class GenerateInventoryImagesJob implements ShouldQueue
                             'generated_by' => 'seedream-4.5',
                             'alt' => $alt,
                             'is_primary' => $index === 0,
-                            'processing_status' => \App\Models\InventoryImage::STATUS_PENDING,
+                            'is_approved' => false,
+                            'processing_status' => \App\Models\InventoryImage::STATUS_PENDING_APPROVAL,
                         ]);
 
                         $images[] = [
@@ -151,9 +152,9 @@ class GenerateInventoryImagesJob implements ShouldQueue
                             'prompt' => $prompt,
                         ];
 
-                        // Dispatch background processing job
-                        ProcessInventoryImageJob::dispatch($inventoryImage)
-                            ->onQueue(config('inventory.queue.name', 'inventory'));
+                        // ProcessInventoryImageJob will be dispatched after user approval
+                        // ProcessInventoryImageJob::dispatch($inventoryImage)
+                        //    ->onQueue(config('inventory.queue.name', 'inventory'));
 
                         $step->addLog('success', "Image " . ($index + 1) . " generated successfully");
                     }
