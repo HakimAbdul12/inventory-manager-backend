@@ -129,10 +129,43 @@ class PermissionService
                 'level' => $sysRole->level,
             ]);
 
-            // Sync permissions
-            // Only copy high-level permissions into tenant roles
-            $permissionIds = $sysRole->permissions->where('type', 'high')->pluck('id')->toArray();
+            // Copy all permissions from the template (already high-level only)
+            $permissionIds = $sysRole->permissions->pluck('id')->toArray();
             $tenantRole->permissions()->sync($permissionIds);
+        }
+    }
+
+    /**
+     * Assign a role (by slug) to a user within a tenant.
+     */
+    public function assignRoleBySlug(User $user, Tenant $tenant, string $roleSlug): void
+    {
+        $role = TenantRole::withoutGlobalScope('tenant')
+            ->where('tenant_id', $tenant->id)
+            ->where('slug', $roleSlug)
+            ->first();
+
+        if ($role) {
+            // Check if already assigned
+            $exists = \Illuminate\Support\Facades\DB::table('tenant_user_roles')
+                ->where('tenant_id', $tenant->id)
+                ->where('user_id', $user->id)
+                ->where('tenant_role_id', $role->id)
+                ->exists();
+
+            if (!$exists) {
+                \Illuminate\Support\Facades\DB::table('tenant_user_roles')->insert([
+                    'id' => (string) \Illuminate\Support\Str::uuid(),
+                    'tenant_id' => $tenant->id,
+                    'user_id' => $user->id,
+                    'tenant_role_id' => $role->id,
+                    'assigned_by' => auth()->id(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            $this->clearUserCache($user, $tenant);
         }
     }
 }

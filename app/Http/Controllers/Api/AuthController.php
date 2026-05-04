@@ -60,6 +60,11 @@ class AuthController extends Controller
         $tenant->addMember($user, TenantUser::ROLE_OWNER);
         $user->update(['current_tenant_id' => $tenant->id]);
 
+        // Seed default roles and assign owner role record
+        $permService = app(PermissionService::class);
+        $permService->syncDefaultRoles($tenant);
+        $permService->assignRoleBySlug($user, $tenant, 'owner');
+
         // Log the user in after registration
         Auth::login($user);
 
@@ -340,6 +345,11 @@ class AuthController extends Controller
             ]);
             $tenant->addMember($user, TenantUser::ROLE_OWNER);
             $user->update(['current_tenant_id' => $tenant->id]);
+
+            // Seed default roles and assign owner role record
+            $permService = app(PermissionService::class);
+            $permService->syncDefaultRoles($tenant);
+            $permService->assignRoleBySlug($user, $tenant, 'owner');
         }
 
         Auth::login($user);

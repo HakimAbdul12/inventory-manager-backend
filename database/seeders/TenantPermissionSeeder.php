@@ -123,14 +123,13 @@ class TenantPermissionSeeder extends Seeder
             ],
         ];
 
-        // Separate high vs low level permission ids
-        $allPermIds = array_values($dbPerms);
+        // Separate high-level permission ids (used for tenant role templates)
         $highPermIds = [];
-        $lowPermIds = [];
         foreach ($dbPerms as $key => $id) {
             $perm = TenantPermission::find($id);
-            if ($perm && $perm->type === 'low') $lowPermIds[] = $id;
-            else $highPermIds[] = $id;
+            if ($perm && $perm->type === 'high') {
+                $highPermIds[$key] = $id;
+            }
         }
 
         foreach ($roles as $slug => $data) {
@@ -153,31 +152,25 @@ class TenantPermissionSeeder extends Seeder
                 'description' => $data['description'],
             ]);
 
-            // Sync role permissions
+            // Sync role permissions — templates store HIGH-level permissions
+            // These get copied into each tenant via syncDefaultRoles()
             $permsToSync = [];
             if (in_array('*', $data['permissions'])) {
-                // For system roles, we only include low-level perms. For tenant templates '*' means all high-level perms when copied into tenant.
-                $permsToSync = $lowPermIds ?: $highPermIds;
+                // All high-level permissions
+                $permsToSync = array_values($highPermIds);
             } elseif (!empty($data['permissions']) && str_starts_with($data['permissions'][0], '!')) {
-                // Exclude pattern (e.g. ['!workspace.roles'])
+                // Exclude pattern (e.g. ['!workspace.roles']) — all high-level except excluded
                 $excludeKeys = array_map(fn($p) => substr($p, 1), $data['permissions']);
-                foreach ($dbPerms as $key => $id) {
+                foreach ($highPermIds as $key => $id) {
                     if (!in_array($key, $excludeKeys)) {
-                        // Only attach low-level perms to system roles
-                        $perm = TenantPermission::find($id);
-                        if ($perm && $perm->type === 'low') {
-                            $permsToSync[] = $id;
-                        }
+                        $permsToSync[] = $id;
                     }
                 }
             } else {
+                // Explicit list — match from high-level permissions
                 foreach ($data['permissions'] as $key) {
-                    if (isset($dbPerms[$key])) {
-                        $perm = TenantPermission::find($dbPerms[$key]);
-                        // Ensure system roles only get low-level permissions
-                        if ($perm && $perm->type === 'low') {
-                            $permsToSync[] = $dbPerms[$key];
-                        }
+                    if (isset($highPermIds[$key])) {
+                        $permsToSync[] = $highPermIds[$key];
                     }
                 }
             }

@@ -189,14 +189,28 @@ class TenantController extends Controller
         $members = $tenant->users()
             ->select('users.id', 'users.name', 'users.email', 'users.avatar')
             ->get()
-            ->map(fn(User $user) => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'avatar' => $user->avatar,
-                'role' => $user->pivot->role,
-                'joined_at' => $user->pivot->joined_at,
-            ]);
+            ->map(function (User $user) use ($tenant) {
+                // Get assigned role records from tenant_user_roles
+                $roles = $user->tenantRoles()
+                    ->wherePivot('tenant_id', $tenant->id)
+                    ->get()
+                    ->map(fn(TenantRole $r) => [
+                        'id' => $r->id,
+                        'name' => $r->name,
+                        'slug' => $r->slug,
+                    ])
+                    ->values();
+
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'avatar' => $user->avatar,
+                    'role' => $user->pivot->role, // legacy pivot role
+                    'roles' => $roles, // granular role records
+                    'joined_at' => $user->pivot->joined_at,
+                ];
+            });
 
         return response()->json(['data' => $members]);
     }
@@ -210,21 +224,24 @@ class TenantController extends Controller
     {
         $tenant = Tenant::findOrFail($id);
 
-        // Only the owner can add members
+        // Only the owner/admin can add members
         $requesterRole = $tenant->getMemberRole($request->user());
-        if ($requesterRole !== TenantUser::ROLE_OWNER) {
-            return response()->json(['message' => 'Only the workspace owner can add members.'], 403);
+        if (!in_array($requesterRole, Tenant::adminRoles())) {
+            return response()->json(['message' => 'Insufficient permissions to add members.'], 403);
         }
 
         $validated = $request->validate([
             'email' => ['required', 'email'],
-            'role' => ['required', Rule::in(Tenant::validRoles())],
+            'role' => ['sometimes', Rule::in(Tenant::validRoles())],
+            'role_ids' => ['sometimes', 'array'],
+            'role_ids.*' => ['string', 'exists:tenant_roles,id'],
             'name' => ['nullable', 'string', 'max:255'],
             'password' => ['nullable', 'string', 'min:8'],
         ]);
 
         // Cannot assign owner role through this endpoint
-        if ($validated['role'] === TenantUser::ROLE_OWNER) {
+        $legacyRole = $validated['role'] ?? 'viewer';
+        if ($legacyRole === TenantUser::ROLE_OWNER) {
             return response()->json(['message' => 'Cannot assign owner role.'], 422);
         }
 
@@ -253,7 +270,37 @@ class TenantController extends Controller
             return response()->json(['message' => 'User is already a member of this workspace.'], 422);
         }
 
-        $tenant->addMember($user, $validated['role']);
+        // Add to tenant_user pivot (legacy role)
+        $tenant->addMember($user, $legacyRole);
+
+        // Assign granular role records via tenant_user_roles
+        $permService = app(PermissionService::class);
+        if (!empty($validated['role_ids'])) {
+            // Validate roles belong to this tenant and are not owner
+            $syncData = [];
+            foreach ($validated['role_ids'] as $roleId) {
+                $role = TenantRole::withoutGlobalScope('tenant')->find($roleId);
+                if ($role && $role->tenant_id === $tenant->id && $role->slug !== 'owner') {
+                    $syncData[$roleId] = [
+                        'tenant_id' => $tenant->id,
+                        'assigned_by' => $request->user()->id,
+                    ];
+                }
+            }
+            $user->tenantRoles()->wherePivot('tenant_id', $tenant->id)->sync($syncData);
+        } else {
+            // Fallback: assign the matching legacy role as a TenantRole record
+            $permService->assignRoleBySlug($user, $tenant, $legacyRole);
+        }
+
+        $permService->clearUserCache($user, $tenant);
+
+        // Get assigned roles for response
+        $assignedRoles = $user->tenantRoles()
+            ->wherePivot('tenant_id', $tenant->id)
+            ->get()
+            ->map(fn(TenantRole $r) => ['id' => $r->id, 'name' => $r->name, 'slug' => $r->slug])
+            ->values();
 
         return response()->json([
             'message' => $wasRegistered
@@ -264,7 +311,8 @@ class TenantController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'avatar' => $user->avatar,
-                'role' => $validated['role'],
+                'role' => $legacyRole,
+                'roles' => $assignedRoles,
             ],
             'was_registered' => $wasRegistered,
         ], 201);
@@ -284,13 +332,10 @@ class TenantController extends Controller
         }
 
         $validated = $request->validate([
-            'role' => ['required', Rule::in(Tenant::validRoles())],
+            'role' => ['sometimes', Rule::in(Tenant::validRoles())],
+            'role_ids' => ['sometimes', 'array'],
+            'role_ids.*' => ['string', 'exists:tenant_roles,id'],
         ]);
-
-        // Cannot change owner role, and non-owners cannot assign owner
-        if ($validated['role'] === TenantUser::ROLE_OWNER && $requesterRole !== TenantUser::ROLE_OWNER) {
-            return response()->json(['message' => 'Only owners can transfer ownership.'], 403);
-        }
 
         $user = User::findOrFail($userId);
 
@@ -298,17 +343,49 @@ class TenantController extends Controller
             return response()->json(['message' => 'User is not a member.'], 404);
         }
 
-        // Cannot change the owner's role (unless transferring ownership)
+        // Cannot change the owner's role
         $currentRole = $tenant->getMemberRole($user);
         if ($currentRole === TenantUser::ROLE_OWNER && $requesterRole !== TenantUser::ROLE_OWNER) {
             return response()->json(['message' => 'Cannot change the owner\'s role.'], 403);
         }
 
-        $tenant->updateMemberRole($user, $validated['role']);
+        // Update legacy role if provided
+        if (isset($validated['role'])) {
+            if ($validated['role'] === TenantUser::ROLE_OWNER && $requesterRole !== TenantUser::ROLE_OWNER) {
+                return response()->json(['message' => 'Only owners can transfer ownership.'], 403);
+            }
+            $tenant->updateMemberRole($user, $validated['role']);
+        }
+
+        // Sync granular role records if role_ids provided
+        if (isset($validated['role_ids'])) {
+            $syncData = [];
+            foreach ($validated['role_ids'] as $roleId) {
+                $role = TenantRole::withoutGlobalScope('tenant')->find($roleId);
+                if ($role && $role->tenant_id === $tenant->id) {
+                    $syncData[$roleId] = [
+                        'tenant_id' => $tenant->id,
+                        'assigned_by' => $request->user()->id,
+                    ];
+                }
+            }
+            $user->tenantRoles()->wherePivot('tenant_id', $tenant->id)->sync($syncData);
+            app(PermissionService::class)->clearUserCache($user, $tenant);
+        }
+
+        // Return updated roles
+        $assignedRoles = $user->tenantRoles()
+            ->wherePivot('tenant_id', $tenant->id)
+            ->get()
+            ->map(fn(TenantRole $r) => ['id' => $r->id, 'name' => $r->name, 'slug' => $r->slug])
+            ->values();
 
         return response()->json([
-            'message' => 'Member role updated.',
-            'data' => ['role' => $validated['role']],
+            'message' => 'Member updated.',
+            'data' => [
+                'role' => $tenant->getMemberRole($user),
+                'roles' => $assignedRoles,
+            ],
         ]);
     }
 
