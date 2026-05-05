@@ -1254,6 +1254,37 @@ class InventoryController extends Controller
     }
 
     /**
+     * Manually trigger processing for an image.
+     */
+    public function processImage(Request $request, string $id, string $imageId): JsonResponse
+    {
+        $image = InventoryImage::where('inventory_item_id', $id)->find($imageId);
+
+        if (!$image) {
+            return response()->json(['success' => false, 'message' => 'Image not found'], 404);
+        }
+
+        $image->update([
+            'processing_status' => InventoryImage::STATUS_PENDING,
+        ]);
+
+        ProcessInventoryImageJob::dispatch($image)
+            ->onQueue(config('inventory.queue.name', 'inventory'));
+
+        $this->activityLogger
+            ->on($image->inventoryItem)
+            ->withDescription('Manually triggered image processing')
+            ->withProperties(['image_id' => $imageId])
+            ->log('inventory.image_processing_triggered');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Image processing started',
+            'data' => $image,
+        ]);
+    }
+
+    /**
      * Apply common filters to inventory query.
      */
     private function applyFilters($query, Request $request): void

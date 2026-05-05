@@ -218,7 +218,7 @@ class User extends Authenticatable
             'tenant_user_roles',
             'user_id',
             'tenant_role_id'
-        )->withPivot(['tenant_id', 'assigned_by'])->withTimestamps();
+        )->using(TenantUserRole::class)->withPivot(['id', 'tenant_id', 'assigned_by'])->withTimestamps();
     }
 
     /**
@@ -269,14 +269,29 @@ class User extends Authenticatable
      */
     public function getTenantsForApi(): array
     {
-        return $this->tenants->map(fn(Tenant $tenant) => [
-            'id' => $tenant->id,
-            'name' => $tenant->name,
-            'slug' => $tenant->slug,
-            'logo' => $tenant->logo,
-            'banner_image' => $tenant->banner_image,
-            'role' => $tenant->pivot->role,
-            'member_count' => $tenant->users()->count(),
-        ])->toArray();
+        return $this->tenants->map(function(Tenant $tenant) {
+            $customRoles = $this->tenantRoles()
+                ->wherePivot('tenant_id', $tenant->id)
+                ->orderByDesc('level')
+                ->get();
+                
+            $highestRole = $customRoles->first();
+            $displayRole = $highestRole ? $highestRole->slug : $tenant->pivot->role;
+
+            return [
+                'id' => $tenant->id,
+                'name' => $tenant->name,
+                'slug' => $tenant->slug,
+                'logo' => $tenant->logo,
+                'banner_image' => $tenant->banner_image,
+                'role' => $displayRole,
+                'roles' => $customRoles->map(fn($r) => [
+                    'id' => $r->id,
+                    'name' => $r->name,
+                    'slug' => $r->slug
+                ])->toArray(),
+                'member_count' => $tenant->users()->count(),
+            ];
+        })->toArray();
     }
 }

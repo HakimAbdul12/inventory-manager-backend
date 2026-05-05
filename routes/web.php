@@ -152,6 +152,7 @@ Route::prefix('inventory')->middleware(['auth:sanctum', 'tenant'])->group(functi
     Route::post('/{id}/images/generate', [InventoryController::class, 'generateAIImages']);
     Route::post('/{id}/images/{image}/approve', [InventoryController::class, 'approveImage']);
     Route::post('/{id}/images/{image}/reject', [InventoryController::class, 'rejectImage']);
+    Route::post('/{id}/images/{image}/process', [InventoryController::class, 'processImage']);
     Route::get('/{id}/price-history', [InventoryController::class, 'priceHistory']);
 });
 

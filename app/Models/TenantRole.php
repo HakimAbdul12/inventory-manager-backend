@@ -43,7 +43,7 @@ class TenantRole extends Model
             'tenant_user_roles',
             'tenant_role_id',
             'user_id'
-        )->withPivot(['tenant_id', 'assigned_by'])->withTimestamps();
+        )->using(TenantUserRole::class)->withPivot(['id', 'tenant_id', 'assigned_by'])->withTimestamps();
     }
 
     /**

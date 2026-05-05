@@ -36,7 +36,23 @@ class ProcessInventoryImageJob implements ShouldQueue
             }
 
             $imageContent = Storage::disk('public')->get($path);
-            $image = $manager->read($imageContent);
+            try {
+                $image = $manager->read($imageContent);
+            } catch (\Exception $e) {
+                // If decoding fails (e.g., WEBP with GD), fallback to using original for all sizes
+                $sizes = [
+                    'original' => Storage::url($path),
+                    'thumbnail' => Storage::url($path),
+                    'medium' => Storage::url($path),
+                    'large' => Storage::url($path),
+                ];
+                
+                $this->inventoryImage->update([
+                    'sizes' => $sizes,
+                    'processing_status' => InventoryImage::STATUS_COMPLETED,
+                ]);
+                return;
+            }
 
             $sizes = [];
             $variants = [
