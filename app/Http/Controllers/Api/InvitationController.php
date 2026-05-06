@@ -27,12 +27,15 @@ class InvitationController extends Controller
             ->with(['tenant:id,name,logo', 'inviter:id,name'])
             ->firstOrFail();
 
+        $userExists = User::where('email', $invitation->email)->exists();
+
         return response()->json([
             'data' => [
                 'email' => $invitation->email,
                 'name' => $invitation->name,
                 'tenant' => $invitation->tenant,
                 'inviter' => $invitation->inviter,
+                'user_exists' => $userExists,
             ],
         ]);
     }
@@ -95,42 +98,37 @@ class InvitationController extends Controller
 
         $tenant = $invitation->tenant;
 
-        if ($tenant->hasMember($user)) {
-            $invitation->update(['accepted_at' => now()]);
-            // Still log them in if they weren't
-            if (!auth()->check()) {
-                 \Illuminate\Support\Facades\Auth::login($user);
-            }
-        } else {
-            DB::transaction(function () use ($user, $tenant, $invitation) {
-                // Add to tenant
+        // Always update roles and switch to the joined tenant
+        DB::transaction(function () use ($user, $tenant, $invitation) {
+            // Add/Update membership in pivot table
+            if (!$tenant->hasMember($user)) {
                 $tenant->addMember($user, 'viewer'); // Default legacy role
+            }
 
-                // Assign specific roles
-                if (!empty($invitation->role_ids)) {
-                    $syncData = [];
-                    foreach ($invitation->role_ids as $roleId) {
-                        $syncData[$roleId] = [
-                            'tenant_id' => $tenant->id,
-                            'assigned_by' => $invitation->invited_by,
-                        ];
-                    }
-                    $user->tenantRoles()->wherePivot('tenant_id', $tenant->id)->syncWithoutDetaching($syncData);
+            // Assign specific roles from invitation
+            if (!empty($invitation->role_ids)) {
+                $syncData = [];
+                foreach ($invitation->role_ids as $roleId) {
+                    $syncData[$roleId] = [
+                        'tenant_id' => $tenant->id,
+                        'assigned_by' => $invitation->invited_by,
+                    ];
                 }
+                // We use syncWithoutDetaching to keep existing roles but ensure new ones are added
+                $user->tenantRoles()->syncWithoutDetaching($syncData);
+            }
 
-                // Mark invitation as accepted
-                $invitation->update(['accepted_at' => now()]);
+            // Mark invitation as accepted
+            $invitation->update(['accepted_at' => now()]);
 
-                // Set as current tenant if none set
-                if (!$user->current_tenant_id) {
-                    $user->update(['current_tenant_id' => $tenant->id]);
-                }
-            });
+            // Always switch to this tenant upon joining
+            $user->update(['current_tenant_id' => $tenant->id]);
+        });
 
-            app(PermissionService::class)->clearUserCache($user, $tenant);
-        }
+        app(PermissionService::class)->clearUserCache($user, $tenant);
 
-        $user->refresh();
+        // Re-fetch user with fresh relationships for the response
+        $user = $user->fresh(['tenants', 'tenantRoles', 'currentTenant']);
         $currentTenant = $user->currentTenant;
 
         return response()->json([

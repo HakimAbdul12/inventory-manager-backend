@@ -249,8 +249,12 @@ class User extends Authenticatable
         $tenant = $tenant ?? $this->currentTenant;
         if (!$tenant) return null;
 
-        $membership = $this->tenants()->where('tenants.id', $tenant->id)->first();
-        return $membership?->pivot?->role;
+        $highestRole = $this->tenantRoles()
+            ->wherePivot('tenant_id', $tenant->id)
+            ->orderByDesc('level')
+            ->first();
+
+        return $highestRole ? $highestRole->slug : ($this->tenants()->where('tenants.id', $tenant->id)->first()?->pivot?->role ?? null);
     }
 
     /**
