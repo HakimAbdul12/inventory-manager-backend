@@ -63,6 +63,16 @@ Route::prefix('auth')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
+| Invitation Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('invitations')->group(function () {
+    Route::get('/{token}', [\App\Http\Controllers\Api\InvitationController::class, 'show']);
+    Route::post('/{token}/accept', [\App\Http\Controllers\Api\InvitationController::class, 'accept']);
+});
+
+/*
+|--------------------------------------------------------------------------
 | Tenant (Workspace) Routes
 |--------------------------------------------------------------------------
 */
@@ -76,6 +86,7 @@ Route::prefix('tenants')->middleware(['auth:sanctum', 'tenant'])->group(function
     Route::post('/{id}/upload-logo', [TenantController::class, 'uploadLogo']);
     Route::get('/{id}/members', [TenantController::class, 'members']);
     Route::post('/{id}/members', [TenantController::class, 'addMember']);
+    Route::post('/{id}/members/invite', [TenantController::class, 'inviteMember']);
     Route::put('/{tenantId}/members/{userId}', [TenantController::class, 'updateMember']);
     Route::delete('/{tenantId}/members/{userId}', [TenantController::class, 'removeMember']);
     Route::put('/{tenantId}/members/{userId}/roles', [TenantController::class, 'assignUserRoles']);

@@ -216,32 +216,105 @@ class TenantController extends Controller
     }
 
     /**
-     * Add a member to a tenant.
-     * If the user doesn't exist, register them first.
-     * Only the workspace owner can add members.
+     * Invite a member via email.
+     * Creates a pending invitation and sends a link.
      */
-    public function addMember(Request $request, string $id): JsonResponse
+    public function inviteMember(Request $request, string $id): JsonResponse
     {
         $tenant = Tenant::findOrFail($id);
+        $permService = app(PermissionService::class);
 
-        // Only the owner/admin can add members
-        $requesterRole = $tenant->getMemberRole($request->user());
-        if (!in_array($requesterRole, Tenant::adminRoles())) {
-            return response()->json(['message' => 'Insufficient permissions to add members.'], 403);
+        // Check if user has permission to invite
+        if (!$permService->userCan('workspace.invite', $request->user(), $tenant)) {
+            return response()->json(['message' => 'Insufficient permissions to invite members.'], 403);
         }
 
         $validated = $request->validate([
             'email' => ['required', 'email'],
-            'role' => ['sometimes', Rule::in(Tenant::validRoles())],
+            'role_ids' => ['required', 'array'],
+            'role_ids.*' => ['string', 'exists:tenant_roles,id'],
+            'name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $email = $validated['email'];
+        $user = User::where('email', $email)->first();
+
+        if ($user && $tenant->hasMember($user)) {
+            return response()->json(['message' => 'User is already a member of this workspace.'], 422);
+        }
+
+        // Check for active invitation
+        $existingInvite = \App\Models\TenantInvitation::where('tenant_id', $tenant->id)
+            ->where('email', $email)
+            ->whereNull('accepted_at')
+            ->where(function ($q) {
+                $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            })
+            ->first();
+
+        if ($existingInvite) {
+            return response()->json(['message' => 'An invitation has already been sent to this email.'], 422);
+        }
+
+        $invitation = \App\Models\TenantInvitation::create([
+            'tenant_id' => $tenant->id,
+            'email' => $email,
+            'name' => $validated['name'] ?? null,
+            'role_ids' => $validated['role_ids'],
+            'token' => \Illuminate\Support\Str::random(40),
+            'invited_by' => $request->user()->id,
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        $roleNames = \App\Models\TenantRole::withoutGlobalScope('tenant')
+            ->whereIn('id', $validated['role_ids'])
+            ->pluck('name')
+            ->toArray();
+
+        try {
+            \Illuminate\Support\Facades\Mail::to($email)->send(new \App\Mail\TenantInvitation(
+                $tenant,
+                $request->user(),
+                $invitation,
+                $roleNames
+            ));
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("Failed to send invitation email to {$email}: " . $e->getMessage());
+        }
+
+        return response()->json([
+            'message' => 'Invitation sent successfully.',
+            'data' => [
+                'email' => $email,
+                'expires_at' => $invitation->expires_at,
+            ],
+        ], 201);
+    }
+
+    /**
+     * Add a member directly to the workspace.
+     * If the user doesn't exist, register them first.
+     */
+    public function addMember(Request $request, string $id): JsonResponse
+    {
+        $tenant = Tenant::findOrFail($id);
+        $permService = app(PermissionService::class);
+
+        if (!$permService->userCan('workspace.invite', $request->user(), $tenant)) {
+            return response()->json(['message' => 'Insufficient permissions.'], 403);
+        }
+
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+            'role' => ['sometimes', \Illuminate\Validation\Rule::in(Tenant::validRoles())],
             'role_ids' => ['sometimes', 'array'],
             'role_ids.*' => ['string', 'exists:tenant_roles,id'],
             'name' => ['nullable', 'string', 'max:255'],
             'password' => ['nullable', 'string', 'min:8'],
         ]);
 
-        // Cannot assign owner role through this endpoint
         $legacyRole = $validated['role'] ?? 'viewer';
-        if ($legacyRole === TenantUser::ROLE_OWNER) {
+        if ($legacyRole === \App\Models\TenantUser::ROLE_OWNER) {
             return response()->json(['message' => 'Cannot assign owner role.'], 422);
         }
 
@@ -249,11 +322,9 @@ class TenantController extends Controller
         $wasRegistered = false;
 
         if (!$user) {
-            // Register the user — name and password required for new users
             if (empty($validated['name']) || empty($validated['password'])) {
                 return response()->json([
-                    'message' => 'User does not exist. Please provide a name and password to register them.',
-                    'requires_registration' => true,
+                    'message' => 'User does not exist. Name and password required for direct addition.',
                 ], 404);
             }
 
@@ -267,16 +338,12 @@ class TenantController extends Controller
         }
 
         if ($tenant->hasMember($user)) {
-            return response()->json(['message' => 'User is already a member of this workspace.'], 422);
+            return response()->json(['message' => 'User is already a member.'], 422);
         }
 
-        // Add to tenant_user pivot (legacy role)
         $tenant->addMember($user, $legacyRole);
 
-        // Assign granular role records via tenant_user_roles
-        $permService = app(PermissionService::class);
         if (!empty($validated['role_ids'])) {
-            // Validate roles belong to this tenant and are not owner
             $syncData = [];
             foreach ($validated['role_ids'] as $roleId) {
                 $role = TenantRole::withoutGlobalScope('tenant')->find($roleId);
@@ -289,32 +356,18 @@ class TenantController extends Controller
             }
             $user->tenantRoles()->wherePivot('tenant_id', $tenant->id)->sync($syncData);
         } else {
-            // Fallback: assign the matching legacy role as a TenantRole record
             $permService->assignRoleBySlug($user, $tenant, $legacyRole);
         }
 
         $permService->clearUserCache($user, $tenant);
 
-        // Get assigned roles for response
-        $assignedRoles = $user->tenantRoles()
-            ->wherePivot('tenant_id', $tenant->id)
-            ->get()
-            ->map(fn(TenantRole $r) => ['id' => $r->id, 'name' => $r->name, 'slug' => $r->slug])
-            ->values();
-
         return response()->json([
-            'message' => $wasRegistered
-                ? 'User registered and added to workspace.'
-                : 'Existing user added to workspace.',
+            'message' => $wasRegistered ? 'User registered and added.' : 'User added to workspace.',
             'data' => [
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
-                'avatar' => $user->avatar,
-                'role' => $legacyRole,
-                'roles' => $assignedRoles,
             ],
-            'was_registered' => $wasRegistered,
         ], 201);
     }
 

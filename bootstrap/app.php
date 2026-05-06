@@ -30,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'widget/*',
             'webhooks/*',
+            'invitations/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

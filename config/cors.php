@@ -59,6 +59,8 @@ return [
         'permissions/*',
         'system',
         'system/*',
+        'invitations',
+        'invitations/*',
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
