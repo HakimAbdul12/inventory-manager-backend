@@ -113,6 +113,19 @@ Broadcast::channel('tenant.{tenantId}.handoffs', function ($user, $tenantId) {
     return $user && (string)$user->current_tenant_id === (string)$tenantId;
 });
 
+/*
+|--------------------------------------------------------------------------
+| Tenant Permissions Channel (Private)
+|--------------------------------------------------------------------------
+|
+| Used for broadcasting real-time permission and role updates to users
+| actively working within the tenant.
+|
+*/
+Broadcast::channel('tenant.{tenantId}.permissions', function ($user, $tenantId) {
+    return $user && (string)$user->current_tenant_id === (string)$tenantId;
+});
+
 // Note: chat-conversation.{id} uses a public Channel (not PrivateChannel)
 // so that the unauthenticated widget can subscribe without Sanctum auth.
 // Security is enforced by session_token checks in the event payload.

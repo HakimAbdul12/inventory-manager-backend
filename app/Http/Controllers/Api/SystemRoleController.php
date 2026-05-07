@@ -113,6 +113,8 @@ class SystemRoleController extends Controller
             }
         }
 
+        event(new \App\Events\SystemPermissionsUpdated());
+
         return response()->json(['message' => 'System role updated.']);
     }
 

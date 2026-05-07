@@ -106,6 +106,10 @@ class PermissionService
     {
         $tenantPart = $tenant ? $tenant->id : 'global';
         Cache::forget("user_{$user->id}_tenant_{$tenantPart}_permissions");
+
+        if ($tenant) {
+            event(new \App\Events\TenantPermissionsUpdated($tenant->id));
+        }
     }
 
     /**
