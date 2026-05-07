@@ -91,6 +91,26 @@ class SystemRoleController extends Controller
         if (array_key_exists('permissions', $validated)) {
             $perms = TenantPermission::whereIn('key', $validated['permissions'])->get();
             $role->permissions()->sync($perms->pluck('id'));
+
+            // Cascade permissions to all existing tenant roles cloned from this template
+            $tenantRoles = TenantRole::withoutGlobalScope('tenant')
+                ->whereNotNull('tenant_id')
+                ->where('is_system', true)
+                ->where('slug', $role->slug)
+                ->get();
+
+            foreach ($tenantRoles as $tenantRole) {
+                $tenantRole->permissions()->sync($perms->pluck('id'));
+                
+                // Clear cache for users in this tenant role
+                $userIds = \Illuminate\Support\Facades\DB::table('tenant_user_roles')
+                    ->where('tenant_role_id', $tenantRole->id)
+                    ->pluck('user_id');
+                    
+                foreach ($userIds as $userId) {
+                    \Illuminate\Support\Facades\Cache::forget("user_{$userId}_tenant_{$tenantRole->tenant_id}_permissions");
+                }
+            }
         }
 
         return response()->json(['message' => 'System role updated.']);
