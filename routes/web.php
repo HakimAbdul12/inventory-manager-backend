@@ -165,6 +165,14 @@ Route::prefix('inventory')->middleware(['auth:sanctum', 'tenant'])->group(functi
     Route::post('/{id}/images/{image}/reject', [InventoryController::class, 'rejectImage']);
     Route::post('/{id}/images/{image}/process', [InventoryController::class, 'processImage']);
     Route::get('/{id}/price-history', [InventoryController::class, 'priceHistory']);
+
+    // VDP Lazy Load Endpoints
+    Route::get('/{id}/deals', [\App\Http\Controllers\Api\DealController::class, 'index']);
+    Route::get('/{id}/service-records', [\App\Http\Controllers\Api\ServiceRecordController::class, 'index']);
+    Route::get('/{id}/reconditioning-tasks', [\App\Http\Controllers\Api\ReconditioningTaskController::class, 'index']);
+    Route::get('/{id}/publishing-status', [\App\Http\Controllers\Api\InventoryPublishingStatusController::class, 'index']);
+    Route::get('/{id}/leads', [\App\Http\Controllers\Api\InventoryLeadController::class, 'index']);
+
 });
 
 /*

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class InventoryItem extends Model
 {
@@ -191,5 +192,86 @@ class InventoryItem extends Model
 
         // Fallback
         return $data['title'] ?? "Inventory #{$this->id}";
+    }
+
+    // --- NEW RELATIONSHIPS FOR ADVANCED DEALERSHIP FEATURES ---
+
+    public function leads(): BelongsToMany
+    {
+        return $this->belongsToMany(Lead::class, 'inventory_item_lead');
+    }
+
+    public function deals(): HasMany
+    {
+        return $this->hasMany(Deal::class);
+    }
+
+    public function reconditioningTasks(): HasMany
+    {
+        return $this->hasMany(ReconditioningTask::class);
+    }
+
+    public function serviceRecords(): HasMany
+    {
+        return $this->hasMany(ServiceRecord::class);
+    }
+
+    public function publishingStatuses(): HasMany
+    {
+        return $this->hasMany(InventoryPublishingStatus::class);
+    }
+
+    // --- DERIVED METRICS ---
+
+    public function getTotalReconditioningCostAttribute(): float
+    {
+        $tasksCost = $this->reconditioningTasks()->where('status', 'completed')->sum('cost');
+        $servicesCost = $this->serviceRecords()->sum('cost');
+        
+        return (float) ($tasksCost + $servicesCost);
+    }
+
+    public function getTotalAcvAttribute(): float
+    {
+        $data = $this->generated_data ?? [];
+        $purchasePrice = (float) ($data['purchase_price'] ?? 0);
+        $transportCost = (float) ($data['transport_cost'] ?? 0);
+        $auctionFees = (float) ($data['auction_fees'] ?? 0);
+        $inspectionCost = (float) ($data['inspection_cost'] ?? 0);
+
+        return $purchasePrice + $transportCost + $auctionFees + $inspectionCost + $this->total_reconditioning_cost;
+    }
+
+    public function getGrossProfitAttribute(): ?float
+    {
+        // Gross Profit = Sale Price - Total ACV
+        // Use the first closed deal sale price if available, otherwise the current listed price
+        $closedDeal = $this->deals()->where('status', 'closed')->first();
+        
+        if ($closedDeal && $closedDeal->sale_price !== null) {
+            $revenue = (float) $closedDeal->sale_price;
+        } else {
+            $data = $this->generated_data ?? [];
+            if (!isset($data['price'])) {
+                return null;
+            }
+            $revenue = (float) $data['price'];
+        }
+
+        return $revenue - $this->total_acv;
+    }
+
+    public function getNetProfitAttribute(): ?float
+    {
+        $closedDeal = $this->deals()->where('status', 'closed')->first();
+        if (!$closedDeal) {
+            return null; // Net profit usually only calculated on closed deal
+        }
+
+        // Net Profit = Total Deal Amount (incl fees) - Taxes - Total ACV
+        // Assuming fees are retained profit and taxes are paid out. This depends on dealership accounting,
+        // but typically Net = Gross + Fees - Pack/Other Costs. We will use a basic formula:
+        $revenue = (float) $closedDeal->total_amount - (float) $closedDeal->taxes;
+        return $revenue - $this->total_acv;
     }
 }

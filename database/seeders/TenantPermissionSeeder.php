@@ -42,6 +42,26 @@ class TenantPermissionSeeder extends Seeder
             ['key' => 'inventory.price.edit', 'label' => 'Edit Pricing', 'category' => 'Inventory'],
             ['key' => 'inventory.price.history', 'label' => 'View Price History', 'category' => 'Inventory'],
 
+            // Acquisition & Costs
+            ['key' => 'inventory.acquisition.view', 'label' => 'View Acquisition Details', 'category' => 'Dealership'],
+            ['key' => 'inventory.acquisition.edit', 'label' => 'Edit Acquisition Details', 'category' => 'Dealership'],
+
+            // Leads
+            ['key' => 'leads.view', 'label' => 'View Vehicle Leads', 'category' => 'Dealership'],
+            ['key' => 'leads.manage', 'label' => 'Manage Leads', 'category' => 'Dealership'],
+
+            // Deals
+            ['key' => 'deals.view', 'label' => 'View Deals', 'category' => 'Dealership'],
+            ['key' => 'deals.manage', 'label' => 'Create & Edit Deals', 'category' => 'Dealership'],
+
+            // Service & Reconditioning
+            ['key' => 'service.view', 'label' => 'View Service & Recon', 'category' => 'Dealership'],
+            ['key' => 'service.manage', 'label' => 'Manage Service & Recon Tasks', 'category' => 'Dealership'],
+
+            // Publishing
+            ['key' => 'publishing.view', 'label' => 'View Publishing Status', 'category' => 'Dealership'],
+            ['key' => 'publishing.manage', 'label' => 'Manage External Publishing', 'category' => 'Dealership'],
+
             // Activity
             ['key' => 'activity.view', 'label' => 'View Activity Logs', 'category' => 'Activity'],
             ['key' => 'activity.view_all', 'label' => 'View All User Activity', 'category' => 'Activity'],
@@ -112,6 +132,16 @@ class TenantPermissionSeeder extends Seeder
                     'inventory.ai.description',
                     'inventory.price.edit',
                     'inventory.price.history',
+                    'inventory.acquisition.view',
+                    'inventory.acquisition.edit',
+                    'leads.view',
+                    'leads.manage',
+                    'deals.view',
+                    'deals.manage',
+                    'service.view',
+                    'service.manage',
+                    'publishing.view',
+                    'publishing.manage',
                     'activity.view',
                 ],
             ],
@@ -130,6 +160,11 @@ class TenantPermissionSeeder extends Seeder
                     'inventory.document.upload',
                     'inventory.ai.description',
                     'inventory.price.history',
+                    'inventory.acquisition.view',
+                    'leads.view',
+                    'deals.view',
+                    'service.view',
+                    'publishing.view',
                 ],
             ],
             'viewer' => [

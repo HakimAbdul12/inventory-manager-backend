@@ -57,12 +57,7 @@ class SystemRoleController extends Controller
         ]);
 
         if (!empty($validated['permissions'])) {
-            // Only allow low-level permissions in system roles
             $perms = TenantPermission::whereIn('key', $validated['permissions'])->get();
-            $invalid = $perms->where('type', 'high')->pluck('key')->toArray();
-            if (!empty($invalid)) {
-                return response()->json(['message' => 'Cannot assign tenant-level permissions to system roles.', 'invalid' => $invalid], 422);
-            }
             $role->permissions()->sync($perms->pluck('id'));
         }
 
@@ -95,10 +90,6 @@ class SystemRoleController extends Controller
 
         if (array_key_exists('permissions', $validated)) {
             $perms = TenantPermission::whereIn('key', $validated['permissions'])->get();
-            $invalid = $perms->where('type', 'high')->pluck('key')->toArray();
-            if (!empty($invalid)) {
-                return response()->json(['message' => 'Cannot assign tenant-level permissions to system roles.', 'invalid' => $invalid], 422);
-            }
             $role->permissions()->sync($perms->pluck('id'));
         }
 

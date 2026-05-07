@@ -171,6 +171,12 @@ class InventoryController extends Controller
                 'analysis_results' => $item->analysis_results,
                 'confidence_score' => $item->confidence_score,
                 'metadata' => $item->metadata,
+                'metrics' => [
+                    'total_acv' => $item->total_acv,
+                    'total_reconditioning_cost' => $item->total_reconditioning_cost,
+                    'gross_profit' => $item->gross_profit,
+                    'net_profit' => $item->net_profit,
+                ],
                 'createdAt' => $item->created_at->toIso8601String(),
                 'updatedAt' => $item->updated_at->toIso8601String(),
             ],
