@@ -61,6 +61,8 @@ return [
         'system/*',
         'invitations',
         'invitations/*',
+        'in-app',
+        'in-app/*',
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

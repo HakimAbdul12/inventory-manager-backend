@@ -14,7 +14,7 @@ use App\Http\Controllers\Api\AINegotiatorController;
 use App\Http\Controllers\Api\AcquisitionController;
 use App\Http\Controllers\Api\DealerProfileController;
 use App\Http\Controllers\Api\DealerConnectionController;
-use App\Http\Controllers\Api\DealerChatController;
+use App\Http\Controllers\Api\InAppChatController;
 use App\Http\Controllers\Api\ChatAttachmentController;
 use App\Http\Controllers\Api\DealerFeedController;
 use App\Http\Controllers\Api\TenantController;
@@ -310,16 +310,24 @@ Route::prefix('dealer-hub')->middleware('auth:sanctum')->group(function () {
     Route::get('/connections/pending', [DealerConnectionController::class, 'pending']);
     Route::get('/connections/mutual/{userId}', [DealerConnectionController::class, 'mutual']);
 
+/*
+|--------------------------------------------------------------------------
+| In-App Chat Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('in-app')->middleware('auth:sanctum')->group(function () {
     // Chat
-    Route::get('/chat/rooms', [DealerChatController::class, 'rooms']);
-    Route::post('/chat/rooms', [DealerChatController::class, 'createRoom']);
-    Route::get('/chat/rooms/{id}/messages', [DealerChatController::class, 'messages']);
-    Route::post('/chat/rooms/{id}/messages', [DealerChatController::class, 'sendMessage']);
-    Route::put('/chat/rooms/{id}/read', [DealerChatController::class, 'markRead']);
-    Route::post('/chat/rooms/{id}/messages/{messageId}/reactions', [DealerChatController::class, 'toggleReaction']);
-    Route::post('/chat/rooms/{id}/pin/{messageId}', [DealerChatController::class, 'togglePin']);
+    Route::get('/chat/rooms', [InAppChatController::class, 'rooms']);
+    Route::post('/chat/rooms', [InAppChatController::class, 'createRoom']);
+    Route::post('/chat/rooms/{id}/favorite', [InAppChatController::class, 'toggleFavorite']);
+    Route::get('/chat/rooms/{id}/messages', [InAppChatController::class, 'messages']);
+    Route::post('/chat/rooms/{id}/messages', [InAppChatController::class, 'sendMessage']);
+    Route::put('/chat/rooms/{id}/read', [InAppChatController::class, 'markRead']);
+    Route::post('/chat/rooms/{id}/messages/{messageId}/reactions', [InAppChatController::class, 'toggleReaction']);
+    Route::post('/chat/rooms/{id}/pin/{messageId}', [InAppChatController::class, 'togglePin']);
     Route::post('/chat/rooms/{id}/attachments', [ChatAttachmentController::class, 'upload']);
-    Route::get('/chat/rooms/{id}/members', [DealerChatController::class, 'roomMembers']);
+    Route::get('/chat/rooms/{id}/members', [InAppChatController::class, 'roomMembers']);
+});
 
     // Feed
     Route::get('/feed', [DealerFeedController::class, 'index']);

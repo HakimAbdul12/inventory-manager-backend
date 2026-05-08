@@ -32,7 +32,7 @@ class MessageReactionUpdated implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('chat.' . $this->chatRoomId),
+            new PrivateChannel('in-app.chat.' . $this->chatRoomId),
         ];
     }
 

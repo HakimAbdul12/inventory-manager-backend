@@ -8,11 +8,10 @@ use App\Http\Controllers\Controller;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\ChatRoomMember;
-use App\Models\DealerConnection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class DealerChatController extends Controller
+class InAppChatController extends Controller
 {
     /**
      * List the user's chat rooms with latest message and unread count.
@@ -70,12 +69,37 @@ class DealerChatController extends Controller
                     'updated_at' => $lastMessage
                         ? $lastMessage->created_at->toIso8601String()
                         : $room->created_at->toIso8601String(),
+                    'is_favorite' => $room->is_favorite,
                 ];
             })
             ->sortByDesc('updated_at')
             ->values();
 
         return response()->json(['rooms' => $rooms]);
+    }
+
+    /**
+     * Toggle favorite status for a chat room.
+     */
+    public function toggleFavorite(Request $request, int $roomId): JsonResponse
+    {
+        $user = $request->user();
+
+        // Verify membership
+        $isMember = ChatRoomMember::where('chat_room_id', $roomId)
+            ->where('user_id', $user->id)->exists();
+
+        if (!$isMember) {
+            return response()->json(['message' => 'Not a member of this room.'], 403);
+        }
+
+        $room = ChatRoom::findOrFail($roomId);
+        $room->update(['is_favorite' => !$room->is_favorite]);
+
+        return response()->json([
+            'message' => $room->is_favorite ? 'Chat marked as favorite.' : 'Chat removed from favorites.',
+            'is_favorite' => $room->is_favorite,
+        ]);
     }
 
     /**
@@ -99,9 +123,14 @@ class DealerChatController extends Controller
                 return response()->json(['message' => 'Cannot chat with yourself.'], 422);
             }
 
-            // Require connection for DM
-            if (!DealerConnection::areConnected($user->id, $otherUserId)) {
-                return response()->json(['message' => 'You must be connected to start a chat.'], 403);
+            // Check if both users are in the same tenant
+            $tenant = app('current_tenant');
+            $otherUser = \App\Models\User::where('id', $otherUserId)
+                ->where('tenant_id', $tenant->id)
+                ->first();
+
+            if (!$otherUser) {
+                return response()->json(['message' => 'User not found in your organization.'], 404);
             }
 
             $room = ChatRoom::findOrCreateDirect($user->id, $otherUserId);
@@ -176,12 +205,19 @@ class DealerChatController extends Controller
             return response()->json(['message' => 'Not a member of this room.'], 403);
         }
 
+        // Extract link previews if message contains URLs
+        $metadata = $validated['metadata'] ?? [];
+        $linkPreviews = $this->extractLinkPreviews($validated['body']);
+        if (!empty($linkPreviews)) {
+            $metadata['link_previews'] = $linkPreviews;
+        }
+
         $message = ChatMessage::create([
             'chat_room_id' => $roomId,
             'sender_id' => $user->id,
             'body' => $validated['body'],
             'type' => $validated['type'] ?? 'text',
-            'metadata' => $validated['metadata'] ?? null,
+            'metadata' => $metadata,
             'reply_to_id' => $validated['reply_to_id'] ?? null,
         ]);
 
@@ -330,5 +366,46 @@ class DealerChatController extends Controller
             'action' => $action,
             'reactions' => $reactions,
         ]);
+    }
+
+    /**
+     * Extract link previews from message text.
+     */
+    private function extractLinkPreviews(string $text): array
+    {
+        $previews = [];
+        $urlPattern = '/https?:\/\/[^\s]+/i';
+
+        if (preg_match_all($urlPattern, $text, $matches)) {
+            foreach ($matches[0] as $url) {
+                // Basic URL validation
+                if (filter_var($url, FILTER_VALIDATE_URL)) {
+                    // For now, create a basic preview. In production, you'd fetch actual metadata
+                    $previews[] = [
+                        'url' => $url,
+                        'title' => $this->getUrlTitle($url),
+                        'description' => null,
+                        'image' => null,
+                    ];
+                }
+            }
+        }
+
+        return $previews;
+    }
+
+    /**
+     * Get a basic title for a URL (simplified implementation).
+     */
+    private function getUrlTitle(string $url): string
+    {
+        // Extract domain from URL
+        $parsed = parse_url($url);
+        $domain = $parsed['host'] ?? $url;
+
+        // Remove www. prefix
+        $domain = preg_replace('/^www\./', '', $domain);
+
+        return ucfirst($domain);
     }
 }

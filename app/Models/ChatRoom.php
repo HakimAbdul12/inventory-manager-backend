@@ -9,7 +9,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class ChatRoom extends Model
 {
-    protected $fillable = ['name', 'type', 'created_by', 'avatar'];
+    protected $fillable = ['name', 'type', 'created_by', 'avatar', 'is_favorite'];
+
+    protected function casts(): array
+    {
+        return [
+            'is_favorite' => 'boolean',
+        ];
+    }
 
     public function creator(): BelongsTo
     {
