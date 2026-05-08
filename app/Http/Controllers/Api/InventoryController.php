@@ -234,6 +234,36 @@ class InventoryController extends Controller
         ]);
     }
 
+    /**
+     * Search inventory with fuzzy matching across ID, VIN, and vehicle details.
+     * Permission required: inventory.view
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $request->validate([
+            'q' => 'required|string|min:1|max:255',
+            'page' => 'integer|min:1',
+            'per_page' => 'integer|min:1|max:50',
+        ]);
+
+        $query = $request->input('q');
+        $page = $request->integer('page', 1);
+        $perPage = $request->integer('per_page', 10);
+
+        $searchService = new \App\Services\InventorySearchService();
+        $results = $searchService->search($query, $perPage, $page);
+
+        return response()->json([
+            'success' => true,
+            'data' => $results['items'],
+            'pagination' => [
+                'currentPage' => $results['current_page'],
+                'perPage' => $results['per_page'],
+                'total' => $results['total'],
+            ],
+        ]);
+    }
+
     public function externalIndex(Request $request): JsonResponse
     {
         $query = InventoryItem::with(['category'])

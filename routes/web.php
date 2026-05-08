@@ -129,6 +129,7 @@ Route::prefix('categories')->middleware('auth:sanctum')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::prefix('inventory')->middleware(['auth:sanctum', 'tenant'])->group(function () {
+    Route::get('/search', [InventoryController::class, 'search']);
     Route::get('/', [InventoryController::class, 'index']);
     Route::get('/count', [InventoryController::class, 'count']);
     Route::post('/start', [InventoryController::class, 'start']);
