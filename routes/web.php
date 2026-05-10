@@ -103,9 +103,14 @@ Route::prefix('tenants')->middleware(['auth:sanctum', 'tenant'])->group(function
 | Permissions Routes
 |--------------------------------------------------------------------------
 */
-Route::prefix('permissions')->middleware(['auth:sanctum', 'tenant'])->group(function () {
+Route::prefix('permissions')->middleware(['auth:sanctum'])->group(function () {
     Route::get('/', [PermissionController::class, 'index']); // All available system permissions
     Route::get('/me', [PermissionController::class, 'userPermissions']); // Current user's resolved permissions
+
+    // Super admin only routes
+    Route::post('/', [PermissionController::class, 'store']);
+    Route::put('/{id}', [PermissionController::class, 'update']);
+    Route::delete('/{id}', [PermissionController::class, 'destroy']);
 });
 
 /*

@@ -94,6 +94,12 @@ class TenantPermissionSeeder extends Seeder
 
         // 2. Define System Roles (tenant_id = null)
         $roles = [
+            'super_admin' => [
+                'name' => 'Super Admin',
+                'level' => 100,
+                'description' => 'Full platform access including all system administration.',
+                'permissions' => ['*'], // All, handled specially in loop
+            ],
             'owner' => [
                 'name' => 'Owner',
                 'level' => 50,
@@ -207,11 +213,13 @@ class TenantPermissionSeeder extends Seeder
                 'description' => $data['description'],
             ]);
 
-            // Sync role permissions — templates store HIGH-level permissions
-            // These get copied into each tenant via syncDefaultRoles()
+            // Sync role permissions
             $permsToSync = [];
-            if (in_array('*', $data['permissions'])) {
-                // All high-level permissions
+            if ($slug === 'super_admin') {
+                // Super Admin gets ALL permissions (high and low)
+                $permsToSync = array_values($dbPerms);
+            } elseif (in_array('*', $data['permissions'])) {
+                // All high-level permissions (for owner template)
                 $permsToSync = array_values($highPermIds);
             } elseif (!empty($data['permissions']) && str_starts_with($data['permissions'][0], '!')) {
                 // Exclude pattern (e.g. ['!workspace.roles']) — all high-level except excluded

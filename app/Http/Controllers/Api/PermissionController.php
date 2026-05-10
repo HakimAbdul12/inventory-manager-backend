@@ -73,4 +73,86 @@ class PermissionController extends Controller
             'data' => $permissions,
         ]);
     }
+
+    /**
+     * Create a new permission (Super Admin only).
+     */
+    public function store(Request $request): JsonResponse
+    {
+        if (!$request->user() || !$request->user()->is_super_admin) {
+            abort(403, 'Unauthorized.');
+        }
+
+        $validated = $request->validate([
+            'key' => 'required|string|unique:tenant_permissions,key',
+            'label' => 'required|string',
+            'category' => 'required|string',
+            'description' => 'nullable|string',
+            'type' => 'required|in:high,low',
+        ]);
+
+        $permission = TenantPermission::create($validated);
+
+        // Automatically assign new permission to the Super Admin system role if it exists
+        $superAdminRole = \App\Models\TenantRole::withoutGlobalScope('tenant')
+            ->whereNull('tenant_id')
+            ->where('slug', 'super_admin')
+            ->first();
+
+        if ($superAdminRole) {
+            $superAdminRole->permissions()->attach($permission->id);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Permission created successfully',
+            'data' => $permission,
+        ]);
+    }
+
+    /**
+     * Update an existing permission (Super Admin only).
+     */
+    public function update(Request $request, $id): JsonResponse
+    {
+        if (!$request->user() || !$request->user()->is_super_admin) {
+            abort(403, 'Unauthorized.');
+        }
+
+        $permission = TenantPermission::findOrFail($id);
+
+        $validated = $request->validate([
+            'key' => 'required|string|unique:tenant_permissions,key,' . $permission->id,
+            'label' => 'required|string',
+            'category' => 'required|string',
+            'description' => 'nullable|string',
+            'type' => 'required|in:high,low',
+        ]);
+
+        $permission->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Permission updated successfully',
+            'data' => $permission,
+        ]);
+    }
+
+    /**
+     * Delete a permission (Super Admin only).
+     */
+    public function destroy(Request $request, $id): JsonResponse
+    {
+        if (!$request->user() || !$request->user()->is_super_admin) {
+            abort(403, 'Unauthorized.');
+        }
+
+        $permission = TenantPermission::findOrFail($id);
+        $permission->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Permission deleted successfully',
+        ]);
+    }
 }
