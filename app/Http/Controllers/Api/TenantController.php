@@ -311,6 +311,7 @@ class TenantController extends Controller
             'role_ids.*' => ['string', 'exists:tenant_roles,id'],
             'name' => ['nullable', 'string', 'max:255'],
             'password' => ['nullable', 'string', 'min:8'],
+            'avatar' => ['nullable', 'image', 'max:5120'],
         ]);
 
         $legacyRole = $validated['role'] ?? 'viewer';
@@ -328,11 +329,17 @@ class TenantController extends Controller
                 ], 404);
             }
 
-            $user = User::create([
+            $userData = [
                 'name' => $validated['name'],
                 'email' => $validated['email'],
                 'password' => \Illuminate\Support\Facades\Hash::make($validated['password']),
-            ]);
+            ];
+
+            if ($request->hasFile('avatar')) {
+                $userData['avatar'] = $request->file('avatar')->store('avatars', 'public');
+            }
+
+            $user = User::create($userData);
             $user->assignRole('dealer');
             $wasRegistered = true;
         }
