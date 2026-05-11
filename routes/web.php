@@ -103,7 +103,7 @@ Route::prefix('tenants')->middleware(['auth:sanctum', 'tenant'])->group(function
 | Permissions Routes
 |--------------------------------------------------------------------------
 */
-Route::prefix('permissions')->middleware(['auth:sanctum'])->group(function () {
+Route::prefix('permissions')->middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/', [PermissionController::class, 'index']); // All available system permissions
     Route::get('/me', [PermissionController::class, 'userPermissions']); // Current user's resolved permissions
 
