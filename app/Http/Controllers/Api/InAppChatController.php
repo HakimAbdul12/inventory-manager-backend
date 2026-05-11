@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\ChatRoomMember;
+use App\Models\TenantRole;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -21,7 +22,9 @@ class InAppChatController extends Controller
         $user = $request->user();
 
         $rooms = $user->chatRooms()
-            ->with(['members:id,name,avatar'])
+            ->with(['members' => function($q) {
+                $q->select('users.id', 'name', 'avatar');
+            }])
             ->get()
             ->map(function ($room) use ($user) {
                 $lastMessage = $room->messages()->with('sender:id,name')->latest()->first();
@@ -58,6 +61,7 @@ class InAppChatController extends Controller
                         'id' => $otherUser->id,
                         'name' => $otherUser->name,
                         'avatar' => $otherUser->avatar,
+                        'roles' => [], // injected after with tenant roles
                     ] : null,
                     'members_count' => $room->members->count(),
                     'last_message' => $lastMessage ? [
@@ -71,10 +75,39 @@ class InAppChatController extends Controller
                         : $room->created_at->toIso8601String(),
                     'is_favorite' => (bool) $membership->is_favorite,
                     'is_pinned' => (bool) $membership->is_pinned,
+                    'created_by' => $room->created_by,
                 ];
             });
 
         $tenant = $user->currentTenant;
+
+        // Batch-load tenant roles for ALL tenant members in a single query
+        $tenantRolesByUser = [];
+        if ($tenant) {
+            $rows = \DB::table('tenant_user_roles')
+                ->join('tenant_roles', 'tenant_roles.id', '=', 'tenant_user_roles.tenant_role_id')
+                ->where('tenant_user_roles.tenant_id', $tenant->id)
+                ->select('tenant_user_roles.user_id', 'tenant_roles.id', 'tenant_roles.name', 'tenant_roles.slug')
+                ->get();
+            foreach ($rows as $row) {
+                $tenantRolesByUser[$row->user_id][] = [
+                    'id'   => $row->id,
+                    'name' => $row->name,
+                    'slug' => $row->slug,
+                ];
+            }
+        }
+
+        // Inject correct tenant roles into existing direct rooms
+        $rooms = $rooms->map(function ($room) use ($tenantRolesByUser) {
+            if ($room['other_user']) {
+                $userId = $room['other_user']['id'];
+                $room['other_user']['roles'] = $tenantRolesByUser[$userId] ?? [];
+            }
+            return $room;
+        });
+
+        // Build virtual rooms for tenant members without an existing direct chat
         if ($tenant) {
             $otherUsers = $tenant->users()->where('users.id', '!=', $user->id)->get();
         } else {
@@ -85,23 +118,24 @@ class InAppChatController extends Controller
             ->pluck('other_user.id')->toArray();
 
         $virtualRooms = $otherUsers->reject(fn($u) => in_array($u->id, $existingDirectUsers))
-            ->map(function ($otherUser) {
+            ->map(function ($otherUser) use ($tenantRolesByUser) {
                 return [
-                    'id' => -$otherUser->id,
-                    'name' => $otherUser->name,
-                    'type' => 'direct',
-                    'avatar' => $otherUser->avatar,
-                    'other_user' => [
-                        'id' => $otherUser->id,
-                        'name' => $otherUser->name,
+                    'id'           => -$otherUser->id,
+                    'name'         => $otherUser->name,
+                    'type'         => 'direct',
+                    'avatar'       => $otherUser->avatar,
+                    'other_user'   => [
+                        'id'     => $otherUser->id,
+                        'name'   => $otherUser->name,
                         'avatar' => $otherUser->avatar,
+                        'roles'  => $tenantRolesByUser[$otherUser->id] ?? [],
                     ],
                     'members_count' => 2,
-                    'last_message' => null,
-                    'unread_count' => 0,
-                    'updated_at' => $otherUser->created_at->toIso8601String(),
-                    'is_favorite' => false,
-                    'is_pinned' => false,
+                    'last_message'  => null,
+                    'unread_count'  => 0,
+                    'updated_at'    => $otherUser->created_at->toIso8601String(),
+                    'is_favorite'   => false,
+                    'is_pinned'     => false,
                 ];
             });
 
@@ -417,6 +451,83 @@ class InAppChatController extends Controller
             'action' => $action,
             'reactions' => $reactions,
         ]);
+    }
+
+    /**
+     * Add a member to a group chat.
+     */
+    public function addMember(Request $request, int $roomId): JsonResponse
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+        ]);
+
+        $user = $request->user();
+
+        // Verify membership of the current user
+        $isMember = ChatRoomMember::where('chat_room_id', $roomId)
+            ->where('user_id', $user->id)->exists();
+
+        if (!$isMember) {
+            return response()->json(['message' => 'Not a member of this room.'], 403);
+        }
+
+        $room = ChatRoom::findOrFail($roomId);
+        if ($room->type !== 'group') {
+            return response()->json(['message' => 'Cannot add members to a direct chat.'], 400);
+        }
+
+        $userIdToAdd = $validated['user_id'];
+        
+        // Ensure user is in the tenant
+        $tenant = $user->currentTenant;
+        $userToAdd = $tenant ? $tenant->users()->where('users.id', $userIdToAdd)->first() : null;
+        
+        if (!$userToAdd) {
+            return response()->json(['message' => 'User not found in your organization.'], 404);
+        }
+
+        $existing = ChatRoomMember::where('chat_room_id', $roomId)
+            ->where('user_id', $userIdToAdd)->exists();
+
+        if ($existing) {
+            return response()->json(['message' => 'User is already a member.'], 400);
+        }
+
+        $room->members()->attach($userIdToAdd, [
+            'role' => 'member',
+            'joined_at' => now(),
+        ]);
+
+        return response()->json(['message' => 'Member added successfully.']);
+    }
+
+    /**
+     * Remove a member from a group chat.
+     */
+    public function removeMember(Request $request, int $roomId, int $userId): JsonResponse
+    {
+        $user = $request->user();
+
+        $room = ChatRoom::findOrFail($roomId);
+        if ($room->type !== 'group') {
+            return response()->json(['message' => 'Cannot remove members from a direct chat.'], 400);
+        }
+
+        $isMember = ChatRoomMember::where('chat_room_id', $roomId)
+            ->where('user_id', $user->id)->exists();
+
+        if (!$isMember) {
+            return response()->json(['message' => 'Not a member of this room.'], 403);
+        }
+
+        if ($userId === $room->created_by && $userId !== $user->id) {
+            return response()->json(['message' => 'Cannot remove the room creator.'], 403);
+        }
+
+        ChatRoomMember::where('chat_room_id', $roomId)->where('user_id', $userId)->delete();
+
+        return response()->json(['message' => 'Member removed successfully.']);
     }
 
     /**

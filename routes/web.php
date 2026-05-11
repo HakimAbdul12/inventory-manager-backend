@@ -342,6 +342,8 @@ Route::prefix('in-app')->middleware('auth:sanctum')->group(function () {
     Route::post('/chat/rooms/{id}/pin/{messageId}', [InAppChatController::class, 'togglePin']);
     Route::post('/chat/rooms/{id}/attachments', [ChatAttachmentController::class, 'upload']);
     Route::get('/chat/rooms/{id}/members', [InAppChatController::class, 'roomMembers']);
+    Route::post('/chat/rooms/{id}/members', [InAppChatController::class, 'addMember']);
+    Route::delete('/chat/rooms/{id}/members/{userId}', [InAppChatController::class, 'removeMember']);
 });
 
 /*
