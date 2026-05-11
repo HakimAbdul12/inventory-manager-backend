@@ -69,13 +69,45 @@ class InAppChatController extends Controller
                     'updated_at' => $lastMessage
                         ? $lastMessage->created_at->toIso8601String()
                         : $room->created_at->toIso8601String(),
-                    'is_favorite' => $room->is_favorite,
+                    'is_favorite' => (bool) $membership->is_favorite,
+                    'is_pinned' => (bool) $membership->is_pinned,
                 ];
-            })
-            ->sortByDesc('updated_at')
-            ->values();
+            });
 
-        return response()->json(['rooms' => $rooms]);
+        $tenant = $user->currentTenant;
+        if ($tenant) {
+            $otherUsers = $tenant->users()->where('users.id', '!=', $user->id)->get();
+        } else {
+            $otherUsers = collect([]);
+        }
+
+        $existingDirectUsers = $rooms->filter(fn($r) => $r['type'] === 'direct' && $r['other_user'])
+            ->pluck('other_user.id')->toArray();
+
+        $virtualRooms = $otherUsers->reject(fn($u) => in_array($u->id, $existingDirectUsers))
+            ->map(function ($otherUser) {
+                return [
+                    'id' => -$otherUser->id,
+                    'name' => $otherUser->name,
+                    'type' => 'direct',
+                    'avatar' => $otherUser->avatar,
+                    'other_user' => [
+                        'id' => $otherUser->id,
+                        'name' => $otherUser->name,
+                        'avatar' => $otherUser->avatar,
+                    ],
+                    'members_count' => 2,
+                    'last_message' => null,
+                    'unread_count' => 0,
+                    'updated_at' => $otherUser->created_at->toIso8601String(),
+                    'is_favorite' => false,
+                    'is_pinned' => false,
+                ];
+            });
+
+        $allRooms = $rooms->concat($virtualRooms)->sortByDesc('updated_at')->values();
+
+        return response()->json(['rooms' => $allRooms]);
     }
 
     /**
@@ -86,19 +118,40 @@ class InAppChatController extends Controller
         $user = $request->user();
 
         // Verify membership
-        $isMember = ChatRoomMember::where('chat_room_id', $roomId)
-            ->where('user_id', $user->id)->exists();
+        $membership = ChatRoomMember::where('chat_room_id', $roomId)
+            ->where('user_id', $user->id)->first();
 
-        if (!$isMember) {
+        if (!$membership) {
             return response()->json(['message' => 'Not a member of this room.'], 403);
         }
 
-        $room = ChatRoom::findOrFail($roomId);
-        $room->update(['is_favorite' => !$room->is_favorite]);
+        $membership->update(['is_favorite' => !$membership->is_favorite]);
 
         return response()->json([
-            'message' => $room->is_favorite ? 'Chat marked as favorite.' : 'Chat removed from favorites.',
-            'is_favorite' => $room->is_favorite,
+            'message' => $membership->is_favorite ? 'Chat marked as favorite.' : 'Chat removed from favorites.',
+            'is_favorite' => $membership->is_favorite,
+        ]);
+    }
+
+    /**
+     * Toggle pinned status for a chat room.
+     */
+    public function togglePinRoom(Request $request, int $roomId): JsonResponse
+    {
+        $user = $request->user();
+
+        $membership = ChatRoomMember::where('chat_room_id', $roomId)
+            ->where('user_id', $user->id)->first();
+
+        if (!$membership) {
+            return response()->json(['message' => 'Not a member of this room.'], 403);
+        }
+
+        $membership->update(['is_pinned' => !$membership->is_pinned]);
+
+        return response()->json([
+            'message' => $membership->is_pinned ? 'Chat pinned.' : 'Chat unpinned.',
+            'is_pinned' => $membership->is_pinned,
         ]);
     }
 
@@ -124,10 +177,8 @@ class InAppChatController extends Controller
             }
 
             // Check if both users are in the same tenant
-            $tenant = app('current_tenant');
-            $otherUser = \App\Models\User::where('id', $otherUserId)
-                ->where('tenant_id', $tenant->id)
-                ->first();
+            $tenant = $user->currentTenant;
+            $otherUser = $tenant ? $tenant->users()->where('users.id', $otherUserId)->first() : null;
 
             if (!$otherUser) {
                 return response()->json(['message' => 'User not found in your organization.'], 404);

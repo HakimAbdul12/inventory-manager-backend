@@ -315,6 +315,15 @@ Route::prefix('dealer-hub')->middleware('auth:sanctum')->group(function () {
     Route::get('/connections/pending', [DealerConnectionController::class, 'pending']);
     Route::get('/connections/mutual/{userId}', [DealerConnectionController::class, 'mutual']);
 
+    // Feed
+    Route::get('/feed', [DealerFeedController::class, 'index']);
+    Route::post('/feed', [DealerFeedController::class, 'store']);
+    Route::post('/feed/{id}/like', [DealerFeedController::class, 'toggleLike']);
+    Route::post('/feed/{id}/comment', [DealerFeedController::class, 'comment']);
+    Route::post('/feed/{id}/bookmark', [DealerFeedController::class, 'toggleBookmark']);
+    Route::get('/feed/{id}/comments', [DealerFeedController::class, 'comments']);
+});
+
 /*
 |--------------------------------------------------------------------------
 | In-App Chat Routes (Protected)
@@ -325,6 +334,7 @@ Route::prefix('in-app')->middleware('auth:sanctum')->group(function () {
     Route::get('/chat/rooms', [InAppChatController::class, 'rooms']);
     Route::post('/chat/rooms', [InAppChatController::class, 'createRoom']);
     Route::post('/chat/rooms/{id}/favorite', [InAppChatController::class, 'toggleFavorite']);
+    Route::post('/chat/rooms/{id}/pin-room', [InAppChatController::class, 'togglePinRoom']);
     Route::get('/chat/rooms/{id}/messages', [InAppChatController::class, 'messages']);
     Route::post('/chat/rooms/{id}/messages', [InAppChatController::class, 'sendMessage']);
     Route::put('/chat/rooms/{id}/read', [InAppChatController::class, 'markRead']);
@@ -332,15 +342,6 @@ Route::prefix('in-app')->middleware('auth:sanctum')->group(function () {
     Route::post('/chat/rooms/{id}/pin/{messageId}', [InAppChatController::class, 'togglePin']);
     Route::post('/chat/rooms/{id}/attachments', [ChatAttachmentController::class, 'upload']);
     Route::get('/chat/rooms/{id}/members', [InAppChatController::class, 'roomMembers']);
-});
-
-    // Feed
-    Route::get('/feed', [DealerFeedController::class, 'index']);
-    Route::post('/feed', [DealerFeedController::class, 'store']);
-    Route::post('/feed/{id}/like', [DealerFeedController::class, 'toggleLike']);
-    Route::post('/feed/{id}/comment', [DealerFeedController::class, 'comment']);
-    Route::post('/feed/{id}/bookmark', [DealerFeedController::class, 'toggleBookmark']);
-    Route::get('/feed/{id}/comments', [DealerFeedController::class, 'comments']);
 });
 
 /*
