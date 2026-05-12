@@ -216,6 +216,53 @@ class TenantController extends Controller
     }
 
     /**
+     * Get a specific member's profile.
+     */
+    public function getMember(Request $request, string $tenantId, string $userId): JsonResponse
+    {
+        $tenant = Tenant::findOrFail($tenantId);
+
+        // Verify user belongs to this tenant
+        if (!$tenant->hasMember($request->user())) {
+            return response()->json(['message' => 'Not a member of this workspace.'], 403);
+        }
+
+        $user = $tenant->users()->findOrFail($userId);
+
+        // Get assigned role records from tenant_user_roles
+        $roles = $user->tenantRoles()
+            ->wherePivot('tenant_id', $tenant->id)
+            ->get()
+            ->map(fn(TenantRole $r) => [
+                'id' => $r->id,
+                'name' => $r->name,
+                'slug' => $r->slug,
+            ])
+            ->values();
+
+        $memberData = [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'avatar' => $user->avatar,
+            'bio' => $user->bio,
+            'phone' => $user->phone,
+            'location_city' => $user->location_city,
+            'location_country' => $user->location_country,
+            'specialties' => $user->specialties,
+            'years_in_business' => $user->years_in_business,
+            'social_links' => $user->social_links,
+            'last_active_at' => $user->last_active_at,
+            'is_public_profile' => $user->is_public_profile,
+            'role' => $user->pivot->role, // legacy pivot role
+            'roles' => $roles, // granular role records
+            'joined_at' => $user->pivot->joined_at,
+        ];
+
+        return response()->json(['data' => $memberData]);
+    }
+
+    /**
      * Invite a member via email.
      * Creates a pending invitation and sends a link.
      */

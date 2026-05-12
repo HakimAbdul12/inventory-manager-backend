@@ -87,6 +87,7 @@ Route::prefix('tenants')->middleware(['auth:sanctum', 'tenant'])->group(function
     Route::get('/{id}/members', [TenantController::class, 'members']);
     Route::post('/{id}/members', [TenantController::class, 'addMember']);
     Route::post('/{id}/members/invite', [TenantController::class, 'inviteMember']);
+    Route::get('/{tenantId}/members/{userId}', [TenantController::class, 'getMember']);
     Route::put('/{tenantId}/members/{userId}', [TenantController::class, 'updateMember']);
     Route::delete('/{tenantId}/members/{userId}', [TenantController::class, 'removeMember']);
     Route::put('/{tenantId}/members/{userId}/roles', [TenantController::class, 'assignUserRoles']);
@@ -108,9 +109,11 @@ Route::prefix('permissions')->middleware(['auth:sanctum', 'tenant'])->group(func
     Route::get('/me', [PermissionController::class, 'userPermissions']); // Current user's resolved permissions
 
     // Super admin only routes
-    Route::post('/', [PermissionController::class, 'store']);
-    Route::put('/{id}', [PermissionController::class, 'update']);
-    Route::delete('/{id}', [PermissionController::class, 'destroy']);
+    Route::middleware('permission:system.manage_permissions')->group(function () {
+        Route::post('/', [PermissionController::class, 'store']);
+        Route::put('/{id}', [PermissionController::class, 'update']);
+        Route::delete('/{id}', [PermissionController::class, 'destroy']);
+    });
 });
 
 /*
@@ -134,12 +137,12 @@ Route::prefix('categories')->middleware('auth:sanctum')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::prefix('inventory')->middleware(['auth:sanctum', 'tenant'])->group(function () {
-    Route::get('/search', [InventoryController::class, 'search']);
-    Route::get('/', [InventoryController::class, 'index']);
-    Route::get('/count', [InventoryController::class, 'count']);
-    Route::post('/start', [InventoryController::class, 'start']);
-    Route::get('/processes', [InventoryController::class, 'processes']);
-    Route::get('/{processId}/status', [InventoryController::class, 'status']);
+    Route::get('/search', [InventoryController::class, 'search'])->middleware('permission:inventory.view');
+    Route::get('/', [InventoryController::class, 'index'])->middleware('permission:inventory.view');
+    Route::get('/count', [InventoryController::class, 'count'])->middleware('permission:inventory.view');
+    Route::post('/start', [InventoryController::class, 'start'])->middleware('permission:inventory.ai.generate');
+    Route::get('/processes', [InventoryController::class, 'processes'])->middleware('permission:inventory.view');
+    Route::get('/{processId}/status', [InventoryController::class, 'status'])->middleware('permission:inventory.view');
 
     // Metrics Routes
     Route::get('/metrics', [\App\Http\Controllers\Api\MetricsController::class, 'stats']);
@@ -150,34 +153,34 @@ Route::prefix('inventory')->middleware(['auth:sanctum', 'tenant'])->group(functi
     Route::post('/blocked-ips', [\App\Http\Controllers\Api\BlockedIpController::class, 'store']);
     Route::delete('/blocked-ips/{ip_address}', [\App\Http\Controllers\Api\BlockedIpController::class, 'destroy']);
 
-    Route::get('/spreadsheet/all', [InventoryController::class, 'allItems']);
-    Route::post('/spreadsheet/create', [InventoryController::class, 'store']);
-    Route::get('/spreadsheet/export/{format}', [InventoryController::class, 'export']);
+    Route::get('/spreadsheet/all', [InventoryController::class, 'allItems'])->middleware('permission:inventory.view');
+    Route::post('/spreadsheet/create', [InventoryController::class, 'store'])->middleware('permission:inventory.create');
+    Route::get('/spreadsheet/export/{format}', [InventoryController::class, 'export'])->middleware('permission:inventory.export');
 
-    Route::get('/{id}', [InventoryController::class, 'show']);
-    Route::post('/{id}', [InventoryController::class, 'update']);
-    Route::post('/{id}/images', [InventoryController::class, 'uploadImage']);
-    Route::put('/{id}/images/{image}/primary', [InventoryController::class, 'setPrimaryImage']);
-    Route::delete('/{id}/images/{image}', [InventoryController::class, 'deleteImage']);
-    Route::post('/{id}/images/external', [InventoryController::class, 'addExternalImage']);
-    Route::post('/{id}/videos', [InventoryController::class, 'uploadVideo']);
-    Route::delete('/{id}/videos/{video}', [InventoryController::class, 'deleteVideo']);
-    Route::post('/{id}/documents', [InventoryController::class, 'uploadDocument']);
-    Route::delete('/{id}/documents/{document}', [InventoryController::class, 'deleteDocument']);
-    Route::post('/{id}/analyze', [InventoryController::class, 'analyze']);
-    Route::post('/{id}/generate-description', [InventoryController::class, 'generateDescription']);
-    Route::post('/{id}/images/generate', [InventoryController::class, 'generateAIImages']);
-    Route::post('/{id}/images/{image}/approve', [InventoryController::class, 'approveImage']);
-    Route::post('/{id}/images/{image}/reject', [InventoryController::class, 'rejectImage']);
-    Route::post('/{id}/images/{image}/process', [InventoryController::class, 'processImage']);
-    Route::get('/{id}/price-history', [InventoryController::class, 'priceHistory']);
+    Route::get('/{id}', [InventoryController::class, 'show'])->middleware('permission:inventory.view');
+    Route::post('/{id}', [InventoryController::class, 'update'])->middleware('permission:inventory.edit');
+    Route::post('/{id}/images', [InventoryController::class, 'uploadImage'])->middleware('permission:inventory.image.upload');
+    Route::put('/{id}/images/{image}/primary', [InventoryController::class, 'setPrimaryImage'])->middleware('permission:inventory.image.set_primary');
+    Route::delete('/{id}/images/{image}', [InventoryController::class, 'deleteImage'])->middleware('permission:inventory.image.delete');
+    Route::post('/{id}/images/external', [InventoryController::class, 'addExternalImage'])->middleware('permission:inventory.image.upload');
+    Route::post('/{id}/videos', [InventoryController::class, 'uploadVideo'])->middleware('permission:inventory.video.upload');
+    Route::delete('/{id}/videos/{video}', [InventoryController::class, 'deleteVideo'])->middleware('permission:inventory.video.delete');
+    Route::post('/{id}/documents', [InventoryController::class, 'uploadDocument'])->middleware('permission:inventory.document.upload');
+    Route::delete('/{id}/documents/{document}', [InventoryController::class, 'deleteDocument'])->middleware('permission:inventory.document.delete');
+    Route::post('/{id}/analyze', [InventoryController::class, 'analyze'])->middleware('permission:inventory.ai.analyze');
+    Route::post('/{id}/generate-description', [InventoryController::class, 'generateDescription'])->middleware('permission:inventory.ai.description');
+    Route::post('/{id}/images/generate', [InventoryController::class, 'generateAIImages'])->middleware('permission:inventory.ai.generate');
+    Route::post('/{id}/images/{image}/approve', [InventoryController::class, 'approveImage'])->middleware('permission:inventory.image.upload');
+    Route::post('/{id}/images/{image}/reject', [InventoryController::class, 'rejectImage'])->middleware('permission:inventory.image.upload');
+    Route::post('/{id}/images/{image}/process', [InventoryController::class, 'processImage'])->middleware('permission:inventory.image.upload');
+    Route::get('/{id}/price-history', [InventoryController::class, 'priceHistory'])->middleware('permission:inventory.price.history');
 
     // VDP Lazy Load Endpoints
-    Route::get('/{id}/deals', [\App\Http\Controllers\Api\DealController::class, 'index']);
-    Route::get('/{id}/service-records', [\App\Http\Controllers\Api\ServiceRecordController::class, 'index']);
-    Route::get('/{id}/reconditioning-tasks', [\App\Http\Controllers\Api\ReconditioningTaskController::class, 'index']);
-    Route::get('/{id}/publishing-status', [\App\Http\Controllers\Api\InventoryPublishingStatusController::class, 'index']);
-    Route::get('/{id}/leads', [\App\Http\Controllers\Api\InventoryLeadController::class, 'index']);
+    Route::get('/{id}/deals', [\App\Http\Controllers\Api\DealController::class, 'index'])->middleware('permission:inventory.view');
+    Route::get('/{id}/service-records', [\App\Http\Controllers\Api\ServiceRecordController::class, 'index'])->middleware('permission:inventory.view');
+    Route::get('/{id}/reconditioning-tasks', [\App\Http\Controllers\Api\ReconditioningTaskController::class, 'index'])->middleware('permission:inventory.view');
+    Route::get('/{id}/publishing-status', [\App\Http\Controllers\Api\InventoryPublishingStatusController::class, 'index'])->middleware('permission:inventory.view');
+    Route::get('/{id}/leads', [\App\Http\Controllers\Api\InventoryLeadController::class, 'index'])->middleware('permission:inventory.view');
 
 });
 
@@ -196,7 +199,7 @@ Route::prefix('api-keys')->middleware('auth:sanctum')->group(function () {
 | Import Routes (Protected)
 |--------------------------------------------------------------------------
 */
-Route::prefix('imports')->middleware('auth:sanctum')->group(function () {
+Route::prefix('imports')->middleware(['auth:sanctum', 'permission:inventory.import'])->group(function () {
     Route::get('/', [\App\Http\Controllers\Api\ImportController::class, 'index']);
     Route::post('/', [\App\Http\Controllers\Api\ImportController::class, 'store']);
     Route::get('/{id}', [\App\Http\Controllers\Api\ImportController::class, 'show']);
@@ -224,7 +227,7 @@ Route::prefix('messages')->middleware('auth:sanctum')->group(function () {
 | Transfer Routes (Protected)
 |--------------------------------------------------------------------------
 */
-Route::prefix('transfers')->middleware('auth:sanctum')->group(function () {
+Route::prefix('transfers')->middleware(['auth:sanctum', 'permission:inventory.transfer'])->group(function () {
     Route::post('/search', [TransferController::class, 'search']);
     Route::get('/', [TransferController::class, 'index']);
     Route::post('/', [TransferController::class, 'store']);
