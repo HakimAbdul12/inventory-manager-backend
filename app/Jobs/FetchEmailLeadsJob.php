@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Models\ChatLead;
+use App\Models\Lead;
 use App\Models\TenantEmailSetting;
 use App\Services\AdfParserService;
 use Exception;
@@ -66,7 +66,8 @@ class FetchEmailLeadsJob implements ShouldQueue
 
                 // Check if this lead was already processed
                 if (
-                    $externalRefId && ChatLead::where('tenant_id', $this->setting->tenant_id)
+                    $externalRefId && Lead::withoutGlobalScope('tenant')
+                    ->where('tenant_id', $this->setting->tenant_id)
                     ->where('external_reference_id', $externalRefId)
                     ->exists()
                 ) {
@@ -80,17 +81,23 @@ class FetchEmailLeadsJob implements ShouldQueue
                 $parsedLead = $adfParser->parse($content);
 
                 if ($parsedLead) {
-                    ChatLead::create([
+                    $nameParts = explode(' ', $parsedLead['name'] ?? '', 2);
+                    Lead::withoutGlobalScope('tenant')->create([
                         'tenant_id' => $this->setting->tenant_id,
-                        'name' => $parsedLead['name'],
+                        'first_name' => $nameParts[0] ?? null,
+                        'last_name' => $nameParts[1] ?? null,
                         'email' => $parsedLead['email'],
                         'phone' => $parsedLead['phone'],
                         'notes' => $parsedLead['notes'],
+                        'source' => 'email',
+                        'source_type' => Lead::SOURCE_WEBSITE,
+                        'source_name' => $parsedLead['provider_name'] ?? 'Email Lead',
+                        'recorded_by_type' => Lead::RECORDED_BY_SYSTEM,
                         'provider_name' => $parsedLead['provider_name'] ?? null,
                         'vehicle_details' => $parsedLead['vehicle_details'] ?? null,
-                        'source' => ChatLead::SOURCE_EMAIL,
-                        'status' => ChatLead::STATUS_NEW,
+                        'status' => Lead::STATUS_NEW,
                         'external_reference_id' => $externalRefId,
+                        'last_activity_at' => now(),
                     ]);
                 } else {
                     Log::warning("FetchEmailLeadsJob: Failed to parse ADF from message ID {$externalRefId} for Tenant {$this->setting->tenant_id}.");

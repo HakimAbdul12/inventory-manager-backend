@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\ChatLead;
 use App\Models\InventoryItem;
+use App\Models\Lead;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Http\JsonResponse;
@@ -13,6 +13,7 @@ class LeadController extends Controller
 {
     /**
      * Store a new lead/enquiry from the dealer website.
+     * Creates a unified Lead record (replaces old ChatLead creation).
      */
     public function store(Request $request): JsonResponse
     {
@@ -30,24 +31,30 @@ class LeadController extends Controller
         }
 
         $vehicle = InventoryItem::find($request->interested_vehicle_id);
+        $nameParts = explode(' ', $request->name, 2);
 
-        $lead = ChatLead::create([
+        $lead = Lead::withoutGlobalScope('tenant')->create([
             'tenant_id' => $vehicle->tenant_id,
-            'name' => $request->name,
+            'first_name' => $nameParts[0] ?? null,
+            'last_name' => $nameParts[1] ?? null,
             'email' => $request->email,
             'phone' => $request->phone,
-            'intent' => $request->intent ?? 'general',
-            'interested_vehicle_id' => $request->interested_vehicle_id,
-            'notes' => $request->notes,
-            'source' => 'email',
+            'source_type' => Lead::SOURCE_WEBSITE,
+            'source_name' => 'Dealer Website',
+            'source' => 'website',
+            'recorded_by_type' => Lead::RECORDED_BY_SYSTEM,
             'provider_name' => 'Dealer Website',
-            'status' => 'new',
+            'intent' => $request->intent ?? Lead::INTENT_GENERAL,
+            'interested_vehicle_id' => $request->interested_vehicle_id,
             'vehicle_details' => [
                 'title' => $vehicle->title,
                 'make' => $vehicle->generated_data['make'] ?? null,
                 'model' => $vehicle->generated_data['model'] ?? null,
                 'year' => $vehicle->generated_data['year'] ?? null,
             ],
+            'notes' => $request->notes,
+            'status' => Lead::STATUS_NEW,
+            'last_activity_at' => now(),
         ]);
 
         return response()->json([

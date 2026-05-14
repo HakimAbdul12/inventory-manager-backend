@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Dashboard;
 
 use App\Http\Controllers\Controller;
-use App\Models\ChatLead;
+use App\Models\Lead;
 use App\Models\TenantEmailSetting;
 use App\Jobs\FetchEmailLeadsJob;
 use Illuminate\Http\JsonResponse;
@@ -12,19 +12,19 @@ use Illuminate\Http\Request;
 class LeadController extends Controller
 {
     /**
-     * Update the status of a lead.
+     * Update the status of a lead (used by chat widget dashboard).
      */
     public function updateStatus(Request $request, string $id): JsonResponse
     {
-        $tenantId = app('current_tenant')->id;
-
         $validated = $request->validate([
-            'status' => 'required|string|in:' . implode(',', ChatLead::STATUSES),
+            'status' => 'required|string|in:' . implode(',', Lead::STATUSES),
         ]);
 
-        $lead = ChatLead::where('tenant_id', $tenantId)->findOrFail($id);
-        $lead->status = $validated['status'];
-        $lead->save();
+        $lead = Lead::findOrFail($id);
+        $lead->transitionStatus(
+            $validated['status'],
+            $request->user()?->id
+        );
 
         return response()->json([
             'message' => 'Lead status updated successfully.',
@@ -47,8 +47,6 @@ class LeadController extends Controller
             ], 400);
         }
 
-        // Dispatch the job synchronously or asynchronously based on preference.
-        // For manual fetch, we can dispatch it to the queue to not block the request.
         FetchEmailLeadsJob::dispatch($setting);
 
         return response()->json([

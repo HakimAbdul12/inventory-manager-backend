@@ -46,13 +46,37 @@ class TenantPermissionSeeder extends Seeder
             ['key' => 'inventory.acquisition.view', 'label' => 'View Acquisition Details', 'category' => 'Dealership'],
             ['key' => 'inventory.acquisition.edit', 'label' => 'Edit Acquisition Details', 'category' => 'Dealership'],
 
-            // Leads
-            ['key' => 'leads.view', 'label' => 'View Vehicle Leads', 'category' => 'Dealership'],
-            ['key' => 'leads.manage', 'label' => 'Manage Leads', 'category' => 'Dealership'],
+            // CRM - Leads
+            ['key' => 'crm.leads.view', 'label' => 'View Leads', 'category' => 'CRM'],
+            ['key' => 'crm.leads.create', 'label' => 'Create Leads', 'category' => 'CRM'],
+            ['key' => 'crm.leads.edit', 'label' => 'Edit Leads', 'category' => 'CRM'],
+            ['key' => 'crm.leads.delete', 'label' => 'Delete Leads', 'category' => 'CRM'],
+            ['key' => 'crm.leads.assign', 'label' => 'Assign Leads', 'category' => 'CRM'],
 
-            // Deals
-            ['key' => 'deals.view', 'label' => 'View Deals', 'category' => 'Dealership'],
-            ['key' => 'deals.manage', 'label' => 'Create & Edit Deals', 'category' => 'Dealership'],
+            // CRM - Deals
+            ['key' => 'crm.deals.view', 'label' => 'View Deals', 'category' => 'CRM'],
+            ['key' => 'crm.deals.create', 'label' => 'Create Deals', 'category' => 'CRM'],
+            ['key' => 'crm.deals.edit', 'label' => 'Edit Deals', 'category' => 'CRM'],
+
+            // CRM - Appointments
+            ['key' => 'crm.appointments.view', 'label' => 'View Appointments', 'category' => 'CRM'],
+            ['key' => 'crm.appointments.create', 'label' => 'Create Appointments', 'category' => 'CRM'],
+            ['key' => 'crm.appointments.edit', 'label' => 'Edit Appointments', 'category' => 'CRM'],
+
+            // CRM - Tasks
+            ['key' => 'crm.tasks.view', 'label' => 'View Tasks', 'category' => 'CRM'],
+            ['key' => 'crm.tasks.create', 'label' => 'Create Tasks', 'category' => 'CRM'],
+            ['key' => 'crm.tasks.edit', 'label' => 'Edit Tasks', 'category' => 'CRM'],
+
+            // CRM - Communications
+            ['key' => 'crm.communications.view', 'label' => 'View Communications', 'category' => 'CRM'],
+            ['key' => 'crm.communications.create', 'label' => 'Create Communications', 'category' => 'CRM'],
+
+            // CRM - Management & Analytics
+            ['key' => 'crm.workflows.manage', 'label' => 'Manage Workflows', 'category' => 'CRM'],
+            ['key' => 'crm.dashboard.view', 'label' => 'View CRM Dashboard', 'category' => 'CRM'],
+            ['key' => 'crm.checkins.manage', 'label' => 'Manage Check-ins', 'category' => 'CRM'],
+            ['key' => 'crm.analytics.view', 'label' => 'View CRM Analytics', 'category' => 'CRM'],
 
             // Service & Reconditioning
             ['key' => 'service.view', 'label' => 'View Service & Recon', 'category' => 'Dealership'],
@@ -140,10 +164,25 @@ class TenantPermissionSeeder extends Seeder
                     'inventory.price.history',
                     'inventory.acquisition.view',
                     'inventory.acquisition.edit',
-                    'leads.view',
-                    'leads.manage',
-                    'deals.view',
-                    'deals.manage',
+                    'crm.leads.view',
+                    'crm.leads.create',
+                    'crm.leads.edit',
+                    'crm.leads.delete',
+                    'crm.leads.assign',
+                    'crm.deals.view',
+                    'crm.deals.create',
+                    'crm.deals.edit',
+                    'crm.appointments.view',
+                    'crm.appointments.create',
+                    'crm.appointments.edit',
+                    'crm.tasks.view',
+                    'crm.tasks.create',
+                    'crm.tasks.edit',
+                    'crm.communications.view',
+                    'crm.communications.create',
+                    'crm.dashboard.view',
+                    'crm.checkins.manage',
+                    'crm.analytics.view',
                     'service.view',
                     'service.manage',
                     'publishing.view',
@@ -167,8 +206,12 @@ class TenantPermissionSeeder extends Seeder
                     'inventory.ai.description',
                     'inventory.price.history',
                     'inventory.acquisition.view',
-                    'leads.view',
-                    'deals.view',
+                    'crm.leads.view',
+                    'crm.deals.view',
+                    'crm.appointments.view',
+                    'crm.tasks.view',
+                    'crm.communications.view',
+                    'crm.dashboard.view',
                     'service.view',
                     'publishing.view',
                 ],

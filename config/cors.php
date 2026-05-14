@@ -63,6 +63,8 @@ return [
         'invitations/*',
         'in-app',
         'in-app/*',
+        'crm/*',
+        'crm'
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

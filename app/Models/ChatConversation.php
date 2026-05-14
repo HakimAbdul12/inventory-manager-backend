@@ -72,7 +72,7 @@ class ChatConversation extends Model
 
     public function lead(): HasOne
     {
-        return $this->hasOne(ChatLead::class, 'conversation_id');
+        return $this->hasOne(Lead::class, 'conversation_id');
     }
 
     // ─── State Machine ──────────────────────────────────────

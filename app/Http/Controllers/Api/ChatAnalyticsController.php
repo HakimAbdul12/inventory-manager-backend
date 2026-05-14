@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\ChatAnalytic;
 use App\Models\ChatConversation;
-use App\Models\ChatLead;
+use App\Models\Lead;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -83,17 +83,18 @@ class ChatAnalyticsController extends Controller
     }
 
     /**
-     * List captured leads.
+     * List captured leads (chat-originated leads from unified table).
      */
     public function leads(Request $request): JsonResponse
     {
         $request->validate([
-            'intent' => 'sometimes|in:' . implode(',', ChatLead::INTENTS),
+            'intent' => 'sometimes|in:' . implode(',', Lead::INTENTS),
             'page' => 'sometimes|integer|min:1',
             'per_page' => 'sometimes|integer|min:1|max:50',
         ]);
 
-        $query = ChatLead::query()
+        $query = Lead::query()
+            ->where('source_type', Lead::SOURCE_CHAT)
             ->with(['conversation', 'interestedVehicle'])
             ->orderByDesc('created_at');
 

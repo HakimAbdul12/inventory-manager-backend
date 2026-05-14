@@ -500,3 +500,41 @@ Route::prefix('activity-logs')->middleware(['auth:sanctum', 'tenant'])->group(fu
     Route::get('/subject/{type}/{subjectId}', [ActivityLogController::class, 'forSubject']);
 });
 
+/*
+|--------------------------------------------------------------------------
+| CRM Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('crm')->middleware(['auth:sanctum', 'tenant'])->group(function () {
+    // Metadata for filter dropdowns
+    Route::get('/metadata', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'metadata']);
+
+    // Leads CRUD
+    Route::get('/leads', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'index'])
+        ->middleware('permission:crm.leads.view');
+    Route::post('/leads', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'store'])
+        ->middleware('permission:crm.leads.create');
+    Route::get('/leads/{id}', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'show'])
+        ->middleware('permission:crm.leads.view');
+    Route::put('/leads/{id}', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'update'])
+        ->middleware('permission:crm.leads.edit');
+    Route::delete('/leads/{id}', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'destroy'])
+        ->middleware('permission:crm.leads.delete');
+
+    // Lead status & assignment
+    Route::patch('/leads/{id}/status', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'updateStatus'])
+        ->middleware('permission:crm.leads.edit');
+    Route::patch('/leads/{id}/assign', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'assign'])
+        ->middleware('permission:crm.leads.assign');
+
+    // Lead timeline & vehicles
+    Route::get('/leads/{id}/status-timeline', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'statusTimeline'])
+        ->middleware('permission:crm.leads.view');
+    Route::get('/leads/{id}/vehicles', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'vehicles'])
+        ->middleware('permission:crm.leads.view');
+    Route::post('/leads/{id}/vehicles', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'addVehicle'])
+        ->middleware('permission:crm.leads.edit');
+    Route::delete('/leads/{id}/vehicles/{vehicleId}', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'removeVehicle'])
+        ->middleware('permission:crm.leads.edit');
+});
+
