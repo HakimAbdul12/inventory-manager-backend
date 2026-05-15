@@ -536,5 +536,25 @@ Route::prefix('crm')->middleware(['auth:sanctum', 'tenant'])->group(function () 
         ->middleware('permission:crm.leads.edit');
     Route::delete('/leads/{id}/vehicles/{vehicleId}', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'removeVehicle'])
         ->middleware('permission:crm.leads.edit');
+
+    // Lead communications
+    Route::get('/leads/{id}/communications', [\App\Http\Controllers\Api\Crm\CrmCommunicationController::class, 'index'])
+        ->middleware('permission:crm.communications.view');
+    Route::post('/leads/{id}/communications', [\App\Http\Controllers\Api\Crm\CrmCommunicationController::class, 'store'])
+        ->middleware('permission:crm.communications.create');
+    Route::get('/leads/{id}/resolve-variables', [\App\Http\Controllers\Api\Crm\CrmCommunicationController::class, 'resolveVariables'])
+        ->middleware('permission:crm.leads.view');
+
+    // Message templates
+    Route::get('/templates', [\App\Http\Controllers\Api\Crm\CrmTemplateController::class, 'index'])
+        ->middleware('permission:crm.communications.view');
+    Route::post('/templates', [\App\Http\Controllers\Api\Crm\CrmTemplateController::class, 'store'])
+        ->middleware('permission:crm.communications.create');
+    Route::get('/templates/{templateId}', [\App\Http\Controllers\Api\Crm\CrmTemplateController::class, 'show'])
+        ->middleware('permission:crm.communications.view');
+    Route::put('/templates/{templateId}', [\App\Http\Controllers\Api\Crm\CrmTemplateController::class, 'update'])
+        ->middleware('permission:crm.communications.create');
+    Route::delete('/templates/{templateId}', [\App\Http\Controllers\Api\Crm\CrmTemplateController::class, 'destroy'])
+        ->middleware('permission:crm.communications.create');
 });
 

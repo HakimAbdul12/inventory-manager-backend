@@ -230,10 +230,44 @@ class CrmLeadController extends Controller
 
         $history = $lead->statusHistory()
             ->with('changedByUser:id,name,avatar')
-            ->orderBy('created_at', 'desc')
-            ->get();
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'type' => 'status_change',
+                    'from_status' => $item->from_status,
+                    'to_status' => $item->to_status,
+                    'notes' => $item->notes,
+                    'user' => $item->changedByUser,
+                    'created_at' => $item->created_at,
+                ];
+            });
 
-        return response()->json(['data' => $history]);
+        $communications = $lead->communications()
+            ->with('sentByUser:id,name,avatar')
+            ->get()
+            ->map(function ($comm) {
+                return [
+                    'id' => $comm->id,
+                    'type' => 'communication',
+                    'channel' => $comm->channel,
+                    'direction' => $comm->direction,
+                    'to_address' => $comm->to_address,
+                    'subject' => $comm->subject,
+                    'body' => $comm->body,
+                    'status' => $comm->status,
+                    'metadata' => $comm->metadata,
+                    'user' => $comm->sentByUser,
+                    'created_at' => $comm->created_at,
+                ];
+            });
+
+        // Merge and sort descending by created_at
+        $timeline = $history->concat($communications)
+            ->sortByDesc('created_at')
+            ->values();
+
+        return response()->json(['data' => $timeline]);
     }
 
     /**

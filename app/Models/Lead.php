@@ -199,6 +199,11 @@ class Lead extends Model
         return $this->hasMany(LeadStatusHistory::class)->orderBy('created_at', 'desc');
     }
 
+    public function communications(): HasMany
+    {
+        return $this->hasMany(LeadCommunication::class);
+    }
+
     // ── Status Transitions ────────────────────────────────────
 
     /**
