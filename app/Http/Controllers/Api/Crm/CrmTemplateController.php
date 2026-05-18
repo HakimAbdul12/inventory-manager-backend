@@ -91,6 +91,13 @@ class CrmTemplateController extends Controller
     public function destroy(string $id): JsonResponse
     {
         $template = MessageTemplate::findOrFail($id);
+
+        if ($template->is_system) {
+            return response()->json([
+                'message' => 'System templates cannot be deleted. You may edit them instead.',
+            ], 403);
+        }
+
         $template->delete();
 
         return response()->json(['message' => 'Template deleted successfully.']);

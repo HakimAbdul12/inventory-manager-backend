@@ -30,10 +30,13 @@ class MessageTemplate extends Model
         'body_html',
         'created_by',
         'is_active',
+        'is_system',
+        'system_key',
     ];
 
     protected $casts = [
-        'is_active' => 'boolean',
+        'is_active'  => 'boolean',
+        'is_system'  => 'boolean',
     ];
 
     // ── Relationships ────────────────────────────────────────

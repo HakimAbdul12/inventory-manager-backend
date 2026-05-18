@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\TransferController;
 use App\Http\Controllers\Api\InventoryController;
+use App\Http\Controllers\Api\Crm\CreditApplicationController;
 
 use App\Http\Controllers\Api\VehicleController;
 use App\Http\Controllers\Api\DashboardController;
@@ -569,5 +570,37 @@ Route::prefix('crm')->middleware(['auth:sanctum', 'tenant'])->group(function () 
         ->middleware('permission:crm.communications.create');
     Route::delete('/templates/{templateId}', [\App\Http\Controllers\Api\Crm\CrmTemplateController::class, 'destroy'])
         ->middleware('permission:crm.communications.create');
+
+    // Credit Application (internal)
+    Route::get('/leads/{leadId}/credit-application', [CreditApplicationController::class, 'show'])
+        ->middleware('permission:crm.credit_application.view');
+    Route::post('/leads/{leadId}/credit-application', [CreditApplicationController::class, 'store'])
+        ->middleware('permission:crm.credit_application.create');
+    Route::put('/leads/{leadId}/credit-application', [CreditApplicationController::class, 'update'])
+        ->middleware('permission:crm.credit_application.edit');
+    Route::post('/leads/{leadId}/credit-application/send-email', [CreditApplicationController::class, 'sendEmail'])
+        ->middleware('permission:crm.credit_application.send');
+    Route::post('/leads/{leadId}/credit-application/send-sms', [CreditApplicationController::class, 'sendSms'])
+        ->middleware('permission:crm.credit_application.send');
+    Route::post('/leads/{leadId}/credit-application/reactivate', [CreditApplicationController::class, 'reactivate'])
+        ->middleware('permission:crm.credit_application.reactivate');
+    Route::get('/leads/{leadId}/credit-application/pdf', [CreditApplicationController::class, 'downloadPdf'])
+        ->middleware('permission:crm.credit_application.download');
+
+    // Notifications
+    Route::get('/notifications', [\App\Http\Controllers\Api\NotificationController::class, 'index']);
+    Route::get('/notifications/unread-count', [\App\Http\Controllers\Api\NotificationController::class, 'unreadCount']);
+    Route::post('/notifications/mark-all-read', [\App\Http\Controllers\Api\NotificationController::class, 'markAllAsRead']);
+    Route::post('/notifications/{id}/mark-read', [\App\Http\Controllers\Api\NotificationController::class, 'markAsRead']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Credit Application — Public Routes (No Auth)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('apply')->group(function () {
+    Route::get('/{token}', [CreditApplicationController::class, 'publicShow']);
+    Route::post('/{token}/submit', [CreditApplicationController::class, 'publicSubmit']);
 });
 

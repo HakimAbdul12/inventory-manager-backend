@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Lead extends Model
 {
@@ -208,6 +209,11 @@ class Lead extends Model
     public function communications(): HasMany
     {
         return $this->hasMany(LeadCommunication::class);
+    }
+
+    public function creditApplication(): HasOne
+    {
+        return $this->hasOne(CreditApplication::class);
     }
 
     // ── Status Transitions ────────────────────────────────────
