@@ -178,7 +178,14 @@ Route::prefix('inventory')->middleware(['auth:sanctum', 'tenant'])->group(functi
     // VDP Lazy Load Endpoints
     Route::get('/{id}/deals', [\App\Http\Controllers\Api\DealController::class, 'index'])->middleware('permission:inventory.view');
     Route::get('/{id}/service-records', [\App\Http\Controllers\Api\ServiceRecordController::class, 'index'])->middleware('permission:inventory.view');
+    Route::post('/{id}/service-records', [\App\Http\Controllers\Api\ServiceRecordController::class, 'store'])->middleware('permission:service.manage');
+    Route::put('/{id}/service-records/{recordId}', [\App\Http\Controllers\Api\ServiceRecordController::class, 'update'])->middleware('permission:service.manage');
+    Route::delete('/{id}/service-records/{recordId}', [\App\Http\Controllers\Api\ServiceRecordController::class, 'destroy'])->middleware('permission:service.manage');
+
     Route::get('/{id}/reconditioning-tasks', [\App\Http\Controllers\Api\ReconditioningTaskController::class, 'index'])->middleware('permission:inventory.view');
+    Route::post('/{id}/reconditioning-tasks', [\App\Http\Controllers\Api\ReconditioningTaskController::class, 'store'])->middleware('permission:service.manage');
+    Route::put('/{id}/reconditioning-tasks/{taskId}', [\App\Http\Controllers\Api\ReconditioningTaskController::class, 'update'])->middleware('permission:service.manage');
+    Route::delete('/{id}/reconditioning-tasks/{taskId}', [\App\Http\Controllers\Api\ReconditioningTaskController::class, 'destroy'])->middleware('permission:service.manage');
     Route::get('/{id}/publishing-status', [\App\Http\Controllers\Api\InventoryPublishingStatusController::class, 'index'])->middleware('permission:inventory.view');
     Route::get('/{id}/leads', [\App\Http\Controllers\Api\InventoryLeadController::class, 'index'])->middleware('permission:inventory.view');
 
