@@ -88,6 +88,26 @@ class CrmLeadController extends Controller
         $validated['recorded_by_id'] = $request->user()->id;
         $validated['last_activity_at'] = now();
 
+        $prospect = null;
+        if (!empty($validated['email'])) {
+            $prospect = \App\Models\Prospect::where('email', $validated['email'])->first();
+        }
+        if (!$prospect && !empty($validated['phone'])) {
+            $prospect = \App\Models\Prospect::where('phone', $validated['phone'])->first();
+        }
+
+        if (!$prospect) {
+            $prospect = \App\Models\Prospect::create([
+                'first_name' => $validated['first_name'],
+                'last_name' => $validated['last_name'] ?? null,
+                'email' => $validated['email'] ?? null,
+                'phone' => $validated['phone'] ?? null,
+                'assigned_to' => $validated['assigned_to'] ?? null,
+            ]);
+        }
+
+        $validated['prospect_id'] = $prospect->id;
+
         $lead = Lead::create($validated);
 
         $this->activityLogger->log(
@@ -99,7 +119,7 @@ class CrmLeadController extends Controller
 
         return response()->json([
             'message' => 'Lead created successfully.',
-            'data' => new LeadResource($lead->load(['assignedUser', 'interestedVehicle.images'])),
+            'data' => new LeadResource($lead->load(['assignedUser', 'interestedVehicle.images', 'prospect'])),
         ], 201);
     }
 
@@ -109,6 +129,7 @@ class CrmLeadController extends Controller
     public function show(string $id): JsonResponse
     {
         $lead = Lead::with([
+            'prospect',
             'assignedUser',
             'interestedVehicle.images',
             'inventoryItems.images',

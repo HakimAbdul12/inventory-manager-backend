@@ -117,6 +117,7 @@ class Lead extends Model
 
     protected $fillable = [
         'tenant_id',
+        'prospect_id',
         'name',
         'first_name',
         'last_name',
@@ -167,6 +168,11 @@ class Lead extends Model
     public function assignedUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    public function prospect(): BelongsTo
+    {
+        return $this->belongsTo(Prospect::class);
     }
 
     public function conversation(): BelongsTo

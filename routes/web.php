@@ -516,6 +516,12 @@ Route::prefix('crm')->middleware(['auth:sanctum', 'tenant'])->group(function () 
     // Metadata for filter dropdowns
     Route::get('/metadata', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'metadata']);
 
+    // Prospects
+    Route::get('/prospects', [\App\Http\Controllers\Api\Crm\ProspectController::class, 'index'])
+        ->middleware('permission:crm.leads.view');
+    Route::get('/prospects/{id}', [\App\Http\Controllers\Api\Crm\ProspectController::class, 'show'])
+        ->middleware('permission:crm.leads.view');
+
     // Leads CRUD
     Route::get('/leads', [\App\Http\Controllers\Api\Crm\CrmLeadController::class, 'index'])
         ->middleware('permission:crm.leads.view');
