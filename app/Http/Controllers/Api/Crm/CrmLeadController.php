@@ -27,6 +27,8 @@ class CrmLeadController extends Controller
             'assigned_to' => 'sometimes|integer',
             'lifecycle_stage' => 'sometimes|string',
             'search' => 'sometimes|string|max:255',
+            'from_date' => 'sometimes|nullable|date',
+            'to_date' => 'sometimes|nullable|date',
             'sort_by' => 'sometimes|in:created_at,last_activity_at,first_name,status',
             'sort_dir' => 'sometimes|in:asc,desc',
             'per_page' => 'sometimes|integer|min:1|max:100',
@@ -54,6 +56,14 @@ class CrmLeadController extends Controller
 
         if ($request->filled('search')) {
             $query->search($request->search);
+        }
+
+        if ($request->filled('from_date')) {
+            $query->whereDate('created_at', '>=', $request->from_date);
+        }
+
+        if ($request->filled('to_date')) {
+            $query->whereDate('created_at', '<=', $request->to_date);
         }
 
         $sortBy = $request->input('sort_by', 'created_at');
@@ -220,24 +230,33 @@ class CrmLeadController extends Controller
     public function assign(Request $request, string $id): JsonResponse
     {
         $validated = $request->validate([
-            'assigned_to' => 'required|integer|exists:users,id',
+            'assigned_to' => 'nullable|integer|exists:users,id',
         ]);
 
         $lead = Lead::findOrFail($id);
         $lead->update([
-            'assigned_to' => $validated['assigned_to'],
+            'assigned_to' => $validated['assigned_to'] ?? null,
             'last_activity_at' => now(),
         ]);
 
-        $this->activityLogger->log(
-            'lead.assigned',
-            $lead,
-            'Lead assigned to salesperson',
-            ['assigned_to' => $validated['assigned_to']]
-        );
+        if (empty($validated['assigned_to'])) {
+            $this->activityLogger->log(
+                'lead.unassigned',
+                $lead,
+                'Lead assignment removed',
+                ['assigned_to' => null]
+            );
+        } else {
+            $this->activityLogger->log(
+                'lead.assigned',
+                $lead,
+                'Lead assigned to salesperson',
+                ['assigned_to' => $validated['assigned_to']]
+            );
+        }
 
         return response()->json([
-            'message' => 'Lead assigned successfully.',
+            'message' => empty($validated['assigned_to']) ? 'Lead unassigned successfully.' : 'Lead assigned successfully.',
             'data' => new LeadResource($lead->fresh(['assignedUser'])),
         ]);
     }
