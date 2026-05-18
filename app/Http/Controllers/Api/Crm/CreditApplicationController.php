@@ -53,6 +53,23 @@ class CreditApplicationController extends Controller
             ], 422);
         }
 
+        $vehicleInterest = [];
+        if ($lead->interestedVehicle) {
+            $vehicleInterest = [
+                'year'  => (string) ($lead->interestedVehicle->year ?? ''),
+                'make'  => $lead->interestedVehicle->make ?? '',
+                'model' => $lead->interestedVehicle->model ?? '',
+                'price' => (string) ($lead->interestedVehicle->price ?? ''),
+            ];
+        } elseif (is_array($lead->vehicle_details)) {
+            $vehicleInterest = [
+                'year'  => (string) ($lead->vehicle_details['year'] ?? ''),
+                'make'  => $lead->vehicle_details['make'] ?? '',
+                'model' => $lead->vehicle_details['model'] ?? '',
+                'price' => (string) ($lead->vehicle_details['price'] ?? ''),
+            ];
+        }
+
         $application = CreditApplication::create([
             'tenant_id'  => $lead->tenant_id,
             'lead_id'    => $lead->id,
@@ -65,7 +82,8 @@ class CreditApplicationController extends Controller
                     'last_name'  => $lead->last_name ?? '',
                     'email'      => $lead->email ?? '',
                     'phone'      => $lead->phone ?? '',
-                ]
+                ],
+                'vehicle_interest' => $vehicleInterest,
             ],
         ]);
 
@@ -335,12 +353,13 @@ class CreditApplicationController extends Controller
 
         return response()->json([
             'data' => [
-                'token'      => $application->token,
-                'status'     => $application->status,
-                'dealership' => [
+                'token'            => $application->token,
+                'status'           => $application->status,
+                'dealership'       => [
                     'name' => $tenant?->name ?? 'Dealership',
                     'logo' => $tenant?->logo_url ?? null,
                 ],
+                'application_data' => $application->application_data,
             ],
         ]);
     }
