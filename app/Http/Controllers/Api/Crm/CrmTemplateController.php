@@ -16,11 +16,14 @@ class CrmTemplateController extends Controller
     {
         $query = MessageTemplate::query()
             ->with('createdByUser:id,name')
-            ->active()
             ->orderBy('name');
 
         if ($request->filled('channel')) {
             $query->byChannel($request->channel);
+        }
+
+        if (!$request->boolean('all', false) && !$request->boolean('include_inactive', false)) {
+            $query->active();
         }
 
         $templates = $query->get();
@@ -39,6 +42,8 @@ class CrmTemplateController extends Controller
             'subject' => 'nullable|string|max:255',
             'body' => 'required|string',
             'body_html' => 'nullable|string',
+            'required_variables' => 'nullable|array',
+            'required_variables.*' => 'string',
         ]);
 
         $template = MessageTemplate::create([
@@ -75,6 +80,8 @@ class CrmTemplateController extends Controller
             'body' => 'sometimes|string',
             'body_html' => 'nullable|string',
             'is_active' => 'sometimes|boolean',
+            'required_variables' => 'nullable|array',
+            'required_variables.*' => 'string',
         ]);
 
         $template->update($validated);

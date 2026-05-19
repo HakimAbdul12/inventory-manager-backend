@@ -32,11 +32,13 @@ class MessageTemplate extends Model
         'is_active',
         'is_system',
         'system_key',
+        'required_variables',
     ];
 
     protected $casts = [
         'is_active'  => 'boolean',
         'is_system'  => 'boolean',
+        'required_variables' => 'array',
     ];
 
     // ── Relationships ────────────────────────────────────────

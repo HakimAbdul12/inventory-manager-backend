@@ -561,15 +561,15 @@ Route::prefix('crm')->middleware(['auth:sanctum', 'tenant'])->group(function () 
 
     // Message templates
     Route::get('/templates', [\App\Http\Controllers\Api\Crm\CrmTemplateController::class, 'index'])
-        ->middleware('permission:crm.communications.view');
+        ->middleware('permission:crm.templates.view');
     Route::post('/templates', [\App\Http\Controllers\Api\Crm\CrmTemplateController::class, 'store'])
-        ->middleware('permission:crm.communications.create');
+        ->middleware('permission:crm.templates.manage');
     Route::get('/templates/{templateId}', [\App\Http\Controllers\Api\Crm\CrmTemplateController::class, 'show'])
-        ->middleware('permission:crm.communications.view');
+        ->middleware('permission:crm.templates.view');
     Route::put('/templates/{templateId}', [\App\Http\Controllers\Api\Crm\CrmTemplateController::class, 'update'])
-        ->middleware('permission:crm.communications.create');
+        ->middleware('permission:crm.templates.manage');
     Route::delete('/templates/{templateId}', [\App\Http\Controllers\Api\Crm\CrmTemplateController::class, 'destroy'])
-        ->middleware('permission:crm.communications.create');
+        ->middleware('permission:crm.templates.manage');
 
     // Credit Application (internal)
     Route::get('/leads/{leadId}/credit-application', [CreditApplicationController::class, 'show'])

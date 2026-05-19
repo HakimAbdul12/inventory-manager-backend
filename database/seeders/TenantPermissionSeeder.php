@@ -72,6 +72,10 @@ class TenantPermissionSeeder extends Seeder
             ['key' => 'crm.communications.view', 'label' => 'View Communications', 'category' => 'CRM'],
             ['key' => 'crm.communications.create', 'label' => 'Create Communications', 'category' => 'CRM'],
 
+            // CRM - Templates
+            ['key' => 'crm.templates.view', 'label' => 'View Message Templates', 'category' => 'CRM'],
+            ['key' => 'crm.templates.manage', 'label' => 'Manage Message Templates', 'category' => 'CRM'],
+
             // CRM - Management & Analytics
             ['key' => 'crm.workflows.manage', 'label' => 'Manage Workflows', 'category' => 'CRM'],
             ['key' => 'crm.dashboard.view', 'label' => 'View CRM Dashboard', 'category' => 'CRM'],
@@ -180,6 +184,8 @@ class TenantPermissionSeeder extends Seeder
                     'crm.tasks.edit',
                     'crm.communications.view',
                     'crm.communications.create',
+                    'crm.templates.view',
+                    'crm.templates.manage',
                     'crm.dashboard.view',
                     'crm.checkins.manage',
                     'crm.analytics.view',
@@ -211,6 +217,7 @@ class TenantPermissionSeeder extends Seeder
                     'crm.appointments.view',
                     'crm.tasks.view',
                     'crm.communications.view',
+                    'crm.templates.view',
                     'crm.dashboard.view',
                     'service.view',
                     'publishing.view',
