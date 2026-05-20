@@ -742,6 +742,30 @@ class TenantController extends Controller
             }
         }
 
+        try {
+            app(\App\Services\NotificationService::class)->send(
+                \App\DTOs\NotificationData::fromArray([
+                    'title' => 'Tenant Role Updated',
+                    'body' => "The role \"{$role->name}\" has been updated by " . $request->user()->name . ".",
+                    'category' => 'security',
+                    'actionUrl' => '/dashboard/settings/roles',
+                    'senderId' => $request->user()->id,
+                    'tenantId' => $tenant->id,
+                    'subjectType' => \App\Models\TenantRole::class,
+                    'subjectId' => $role->id,
+                    'metadata' => [
+                        'role_name' => $role->name,
+                        'actor_name' => $request->user()->name,
+                    ]
+                ]),
+                [
+                    'permissions' => ['workspace.settings']
+                ]
+            );
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to send tenant role update notification: ' . $e->getMessage());
+        }
+
         return response()->json(['message' => 'Role updated successfully.']);
     }
 

@@ -88,8 +88,24 @@ class SystemRoleController extends Controller
 
         if (!empty($update)) $role->update($update);
 
+        $added = [];
+        $removed = [];
+
         if (array_key_exists('permissions', $validated)) {
+            $oldPermsModels = $role->permissions()->get();
+            $oldPerms = $oldPermsModels->pluck('key')->toArray();
+            
             $perms = TenantPermission::whereIn('key', $validated['permissions'])->get();
+            $newPerms = $perms->pluck('key')->toArray();
+            
+            $addedKeys = array_values(array_diff($newPerms, $oldPerms));
+            $removedKeys = array_values(array_diff($oldPerms, $newPerms));
+            
+            $added = $perms->whereIn('key', $addedKeys)->pluck('label')->toArray();
+            $removed = $oldPermsModels->whereIn('key', $removedKeys)->pluck('label')->toArray();
+
+            $role->permissions()->sync($perms->pluck('id'));
+
             $role->permissions()->sync($perms->pluck('id'));
 
             // Cascade permissions to all existing tenant roles cloned from this template
@@ -110,6 +126,58 @@ class SystemRoleController extends Controller
                 foreach ($userIds as $userId) {
                     \Illuminate\Support\Facades\Cache::forget("user_{$userId}_tenant_{$tenantRole->tenant_id}_permissions");
                 }
+            }
+        }
+
+        // Get all users holding this system role template across tenants to notify them
+        $clonedRoleIds = TenantRole::withoutGlobalScope('tenant')
+            ->whereNotNull('tenant_id')
+            ->where('is_system', true)
+            ->where('slug', $role->slug)
+            ->pluck('id');
+
+        $usersToNotify = \Illuminate\Support\Facades\DB::table('tenant_user_roles')
+            ->whereIn('tenant_role_id', $clonedRoleIds)
+            ->pluck('user_id')
+            ->unique()
+            ->toArray();
+
+        $title = 'Role Permissions Updated';
+        $body = "The system role template \"{$role->name}\" has been updated.";
+        
+        if (!empty($added) || !empty($removed)) {
+            $changes = [];
+            if (!empty($added)) {
+                $changes[] = 'Gained: ' . implode(', ', $added);
+            }
+            if (!empty($removed)) {
+                $changes[] = 'Lost: ' . implode(', ', $removed);
+            }
+            $body = "The permissions for your role \"{$role->name}\" have changed. " . implode('. ', $changes) . '.';
+        }
+
+        if (!empty($usersToNotify)) {
+            try {
+                app(\App\Services\NotificationService::class)->send(
+                    \App\DTOs\NotificationData::fromArray([
+                        'title' => $title,
+                        'body' => $body,
+                        'category' => 'system',
+                        'actionUrl' => null,
+                        'senderId' => null, // Unattributed system notification
+                        'tenantId' => null, // Global
+                        'subjectType' => TenantRole::class,
+                        'subjectId' => $role->id,
+                        'metadata' => [
+                            'role_name' => $role->name,
+                        ]
+                    ]),
+                    [
+                        'user_ids' => $usersToNotify
+                    ]
+                );
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Failed to send system role update notification: ' . $e->getMessage());
             }
         }
 
