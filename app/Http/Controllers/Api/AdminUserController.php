@@ -26,12 +26,13 @@ class AdminUserController extends Controller
             });
         }
 
-        $users = $query->with('roles')->paginate(10);
+        $users = $query->with(['roles', 'tenants', 'tenantRoles'])->paginate(10);
 
         $users->through(function ($user) {
             $roles = $user->getRoleNames();
             unset($user->roles);
             $user->setAttribute('roles', $roles);
+            $user->setAttribute('tenants_info', $user->getTenantsForApi());
             return $user;
         });
 

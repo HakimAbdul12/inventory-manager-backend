@@ -104,6 +104,9 @@ class TenantPermissionSeeder extends Seeder
             ['key' => 'system.manage_permissions', 'label' => 'Manage System Permissions', 'category' => 'System', 'type' => 'low'],
             ['key' => 'system.view_all_tenants', 'label' => 'View All Tenants', 'category' => 'System', 'type' => 'low'],
             ['key' => 'system.switch_tenant', 'label' => 'Switch Tenant (Admin)', 'category' => 'System', 'type' => 'low'],
+            ['key' => 'system.manage_users', 'label' => 'Manage System Users', 'category' => 'System', 'type' => 'low'],
+            ['key' => 'system.manage_messages', 'label' => 'Manage System Messages', 'category' => 'System', 'type' => 'low'],
+            ['key' => 'system.manage_categories', 'label' => 'Manage Product Categories', 'category' => 'System', 'type' => 'low'],
         ];
 
         // Sync permissions

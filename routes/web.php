@@ -250,7 +250,7 @@ Route::prefix('transfers')->middleware(['auth:sanctum', 'permission:inventory.tr
 | Admin Routes (Protected)
 |--------------------------------------------------------------------------
 */
-Route::prefix('admin')->middleware(['auth:sanctum', 'role:admin'])->group(function () {
+Route::prefix('admin')->middleware(['auth:sanctum', 'permission:system.manage_users'])->group(function () {
     Route::get('/users', [\App\Http\Controllers\Api\AdminUserController::class, 'index']);
     Route::post('/users/{id}/block', [\App\Http\Controllers\Api\AdminUserController::class, 'toggleBlock']);
     Route::delete('/users/{id}', [\App\Http\Controllers\Api\AdminUserController::class, 'destroy']);
