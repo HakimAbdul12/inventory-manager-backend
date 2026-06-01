@@ -1,0 +1,246 @@
+<?php
+
+namespace Database\Seeders;
+
+use Illuminate\Database\Seeder;
+
+class VehiclesTableSeeder extends Seeder
+{
+
+    /**
+     * Auto generated seed file
+     *
+     * @return void
+     */
+    public function run()
+    {
+        
+
+        \DB::table('vehicles')->delete();
+        
+        \DB::table('vehicles')->insert(array (
+            0 => 
+            array (
+                'id' => '019bded0-edca-70ab-af1e-6ead957ed482',
+                'inventory_item_id' => '019bded0-edca-70ab-af1e-6ead957ed482',
+                'user_id' => 4,
+                'vin' => 'N/A',
+                'make' => 'BMW',
+                'model' => 'M5',
+                'year' => 2025,
+                'trim' => NULL,
+                'mileage' => 0,
+                'price' => '0.00',
+                'market_average' => '30000.00',
+                'velocity_score' => '5.00',
+                'carrying_cost' => '15.00',
+                'dol' => 0,
+                'status' => 'active',
+                'created_at' => '2026-02-15 03:57:24',
+                'updated_at' => '2026-02-15 03:57:24',
+            ),
+            1 => 
+            array (
+                'id' => '019bded2-7808-7190-af0e-e584d62ee58c',
+                'inventory_item_id' => '019bded2-7808-7190-af0e-e584d62ee58c',
+                'user_id' => 4,
+                'vin' => '1234567890',
+                'make' => 'BMW',
+                'model' => 'M3',
+                'year' => 2021,
+                'trim' => NULL,
+                'mileage' => 0,
+                'price' => '0.00',
+                'market_average' => '30000.00',
+                'velocity_score' => '5.00',
+                'carrying_cost' => '15.00',
+                'dol' => 0,
+                'status' => 'active',
+                'created_at' => '2026-02-15 03:57:24',
+                'updated_at' => '2026-02-15 03:57:24',
+            ),
+            2 => 
+            array (
+                'id' => '019be40a-0cd0-719e-afc2-56c5f27bab07',
+                'inventory_item_id' => '019be40a-0cd0-719e-afc2-56c5f27bab07',
+                'user_id' => 4,
+                'vin' => 'XYZ123456789',
+                'make' => 'BMW',
+                'model' => 'X7',
+                'year' => 2024,
+                'trim' => NULL,
+                'mileage' => 15000,
+                'price' => '0.00',
+                'market_average' => '30000.00',
+                'velocity_score' => '5.00',
+                'carrying_cost' => '15.00',
+                'dol' => 0,
+                'status' => 'active',
+                'created_at' => '2026-02-15 03:57:24',
+                'updated_at' => '2026-02-15 03:57:24',
+            ),
+            3 => 
+            array (
+                'id' => '019be600-9cda-735d-ba24-97cb174ab243',
+                'inventory_item_id' => '019be600-9cda-735d-ba24-97cb174ab243',
+                'user_id' => 4,
+                'vin' => '1234567890ABC',
+                'make' => 'BMW',
+                'model' => 'M3',
+                'year' => 2024,
+                'trim' => NULL,
+                'mileage' => 5000,
+                'price' => '0.00',
+                'market_average' => '30000.00',
+                'velocity_score' => '5.00',
+                'carrying_cost' => '15.00',
+                'dol' => 0,
+                'status' => 'active',
+                'created_at' => '2026-02-15 03:57:24',
+                'updated_at' => '2026-02-15 03:57:24',
+            ),
+            4 => 
+            array (
+                'id' => '019be626-07c3-7115-a92e-e509236fb6f4',
+                'inventory_item_id' => '019be626-07c3-7115-a92e-e509236fb6f4',
+                'user_id' => 4,
+                'vin' => 'XYZ123',
+                'make' => 'BMW',
+                'model' => 'M4 C',
+                'year' => 2023,
+                'trim' => NULL,
+                'mileage' => 15000,
+                'price' => '0.00',
+                'market_average' => '30000.00',
+                'velocity_score' => '5.00',
+                'carrying_cost' => '15.00',
+                'dol' => 0,
+                'status' => 'active',
+                'created_at' => '2026-02-15 03:57:24',
+                'updated_at' => '2026-02-15 03:57:24',
+            ),
+            5 => 
+            array (
+                'id' => '019be628-530e-724d-a3a2-bff576ca24b1',
+                'inventory_item_id' => '019be628-530e-724d-a3a2-bff576ca24b1',
+                'user_id' => 4,
+                'vin' => '1234567890-1EEW',
+                'make' => 'BMW',
+                'model' => 'E60 M5',
+                'year' => 2009,
+                'trim' => NULL,
+                'mileage' => 5000,
+                'price' => '0.00',
+                'market_average' => '30000.00',
+                'velocity_score' => '5.00',
+                'carrying_cost' => '15.00',
+                'dol' => 0,
+                'status' => 'active',
+                'created_at' => '2026-02-15 03:57:24',
+                'updated_at' => '2026-02-15 03:57:24',
+            ),
+            6 => 
+            array (
+                'id' => '019be62f-22f2-7070-b11e-51ba1351fde3',
+                'inventory_item_id' => '019be62f-22f2-7070-b11e-51ba1351fde3',
+                'user_id' => 4,
+                'vin' => 'XYZ123-OSJR',
+                'make' => 'BMW',
+                'model' => 'E60 M5',
+                'year' => 2009,
+                'trim' => NULL,
+                'mileage' => 0,
+                'price' => '0.00',
+                'market_average' => '30000.00',
+                'velocity_score' => '5.00',
+                'carrying_cost' => '15.00',
+                'dol' => 0,
+                'status' => 'active',
+                'created_at' => '2026-02-15 03:57:24',
+                'updated_at' => '2026-02-15 03:57:24',
+            ),
+            7 => 
+            array (
+                'id' => '019c2bf3-e8fe-7245-b172-da0cfab66ac2',
+                'inventory_item_id' => '019c2bf3-e8fe-7245-b172-da0cfab66ac2',
+                'user_id' => 3,
+                'vin' => 'XYZ123-YU72',
+                'make' => 'BMW',
+                'model' => 'm5cs',
+                'year' => 2024,
+                'trim' => NULL,
+                'mileage' => 700,
+                'price' => '0.00',
+                'market_average' => '30000.00',
+                'velocity_score' => '5.00',
+                'carrying_cost' => '15.00',
+                'dol' => 0,
+                'status' => 'active',
+                'created_at' => '2026-02-15 03:57:24',
+                'updated_at' => '2026-02-15 03:57:24',
+            ),
+            8 => 
+            array (
+                'id' => '019c20b4-1f40-7365-b248-e58b7ddf1efc',
+                'inventory_item_id' => '019c20b4-1f40-7365-b248-e58b7ddf1efc',
+                'user_id' => 1,
+                'vin' => 'XYZ123-PS8V',
+                'make' => 'BMW',
+                'model' => 'm5cs',
+                'year' => 2024,
+                'trim' => NULL,
+                'mileage' => 700,
+                'price' => '0.00',
+                'market_average' => '30000.00',
+                'velocity_score' => '5.00',
+                'carrying_cost' => '15.00',
+                'dol' => 0,
+                'status' => 'active',
+                'created_at' => '2026-02-15 03:57:24',
+                'updated_at' => '2026-02-15 03:57:24',
+            ),
+            9 => 
+            array (
+                'id' => '019c358a-3c11-705f-bb5a-826c3517bb21',
+                'inventory_item_id' => '019c358a-3c11-705f-bb5a-826c3517bb21',
+                'user_id' => 1,
+                'vin' => 'DE123456',
+                'make' => 'BMW',
+                'model' => 'X7',
+                'year' => 2023,
+                'trim' => NULL,
+                'mileage' => 0,
+                'price' => '0.00',
+                'market_average' => '30000.00',
+                'velocity_score' => '5.00',
+                'carrying_cost' => '15.00',
+                'dol' => 0,
+                'status' => 'active',
+                'created_at' => '2026-02-15 03:57:24',
+                'updated_at' => '2026-02-15 03:57:24',
+            ),
+            10 => 
+            array (
+                'id' => '019c3611-9b67-7241-9179-cc992c48fcee',
+                'inventory_item_id' => '019c3611-9b67-7241-9179-cc992c48fcee',
+                'user_id' => 1,
+                'vin' => 'UNKNOWN-AMSLHMFF69',
+                'make' => 'Mercedes-Benz',
+                'model' => 'c300',
+                'year' => 2023,
+                'trim' => NULL,
+                'mileage' => 0,
+                'price' => '0.00',
+                'market_average' => '30000.00',
+                'velocity_score' => '5.00',
+                'carrying_cost' => '15.00',
+                'dol' => 0,
+                'status' => 'active',
+                'created_at' => '2026-02-15 03:57:24',
+                'updated_at' => '2026-02-15 03:57:24',
+            ),
+        ));
+        
+        
+    }
+}

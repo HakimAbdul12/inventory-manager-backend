@@ -1,0 +1,40 @@
+<?php
+
+namespace Database\Seeders;
+
+use Illuminate\Database\Seeder;
+
+class CategoriesTableSeeder extends Seeder
+{
+
+    /**
+     * Auto generated seed file
+     *
+     * @return void
+     */
+    public function run()
+    {
+        
+
+        \DB::table('categories')->delete();
+        
+        \DB::table('categories')->insert(array (
+            0 => 
+            array (
+                'id' => '019bdb2e-9645-738b-a832-069c0d0da298',
+                'name' => 'Cars',
+                'slug' => 'cars',
+                'description' => 'Automobile inventory listings for cars, trucks, and SUVs',
+                'icon' => 'car',
+            'fields' => '[{"key":"make","label":"Make","type":"select","required":true,"options":["Abarth","AC","Aixam","AK","Alfa Romeo","Allard","Alpine","Alvis","Ariel","Asia","Aston Martin","Audi","Austin","BAC","Beauford","Bentley","Blitzworld","BMW","Bramwith","Bugatti","Buick","BYD","Cadillac","Carbodies","Caterham","CFMOTO","Changan","Chery","Chesil","Chevrolet","Chrysler","Citroen","Corbin","Corvette","CUPRA","Dacia","Daewoo","Daihatsu","Daimler","Datsun","Dax","Delorean","De Tomaso","Dodge","DS AUTOMOBILES","E-COBRA","Ferrari","Fiat","Fisker","Ford","Gardner Douglas","Geely","Genesis","GMC","Great Wall","GWM","Hillman","Holden","Honda","Hummer","Hyundai","INEOS","Infiniti","Isuzu","Iveco","JAECOO","Jaguar","JBA","Jeep","KGM","Khaleej","Kia","Koenigsegg","KTM","Lada","Lamborghini","Lancia","Land Rover","LDV","Leapmotor","LEVC","Lexus","Leyland","Lincoln","Lister","Locust","London Taxis International","Lotus","Mahindra","Marcos","Maserati","MAXUS","Maybach","Mazda","McLaren","Mercedes-Benz","MEV","MG","Micro","Mills Extreme Vehicles (MEV)","MINI","Mitsubishi","Mitsuoka","MOKE","Morgan","Morris","Nardini","Nissan","Noble","Oldsmobile","OMODA","Opel","Panther","Perodua","Peugeot","Pilgrim","Plymouth","Polestar","Pontiac","Porsche","Proton","Quantum","Radical","Ram","Reliant","Renault","Roadrunner","Rolls-Royce","Rover","RUF","Saab","SEAT","Shelby","Skoda","Skywell","Smart","SsangYong","Standard","Subaru","Sunbeam","Suzuki","Tesla","Toyota","Triumph","TVR","Ultima","Vauxhall","Volkswagen","Volvo","VRS","Westfield","XPENG","Zenos"],"other_names":["manufacturer","brand"]},{"key":"model","label":"Model","type":"string","required":true,"other_names":[]},{"key":"year","label":"Year","type":"number","required":true,"other_names":[]},{"key":"condition","label":"Condition","type":"select","required":true,"options":["New","Used","Certified Pre-Owned"],"other_names":[]},{"key":"isCertifiedPreOwned","label":"Certified Pre-Owned","type":"boolean","required":false,"other_names":["cpo","certified"]},{"key":"mileage","label":"Mileage","type":"number","required":false,"other_names":["odometer","miles"]},{"key":"color","label":"Exterior Color","type":"string","required":false,"other_names":["exterior_color","colour","paint"]},{"key":"interiorColor","label":"Interior Color","type":"string","required":false,"other_names":["interior","trim"]},{"key":"bodyType","label":"Body Type","type":"select","required":false,"options":["Sedan","SUV","Truck","Coupe","Convertible","Hatchback","Van","Wagon","Motorcycle","Other"],"other_names":["body_style","class"]},{"key":"doors","label":"Doors","type":"number","required":false,"other_names":["door_count"]},{"key":"seats","label":"Seats","type":"number","required":false,"other_names":["seating_capacity","passengers"]},{"key":"fuelType","label":"Fuel Type","type":"select","required":false,"options":["Gasoline","Diesel","Electric","Hybrid","Plug-in Hybrid"],"other_names":["fuel"]},{"key":"fuelEconomy","label":"Fuel Economy","type":"string","required":false,"other_names":["mpg","consumption"]},{"key":"transmission","label":"Transmission","type":"select","required":false,"options":["Automatic","Manual","CVT","Dual-Clutch"],"other_names":["trans","gearbox"]},{"key":"drivetrain","label":"Drivetrain","type":"select","required":false,"options":["FWD","RWD","AWD","4WD"],"other_names":["drive_type","driven_wheels"]},{"key":"engine","label":"Engine","type":"string","required":false,"other_names":["motor","displacement"]},{"key":"price","label":"Price","type":"number","required":false,"other_names":["cost","asking_price","msrp"],"generated":false},{"key":"location","label":"Location","type":"string","required":false,"other_names":[]},{"key":"vin","label":"VIN","type":"string","required":false,"other_names":["vehicle_identification_number","serial_number"]},{"key":"description","label":"Description","type":"text","required":false,"other_names":["notes","comments","details"],"generated":true},{"key":"highlights","label":"Key Highlights","type":"array","required":false,"other_names":["features","selling_points"],"generated":true},{"key":"additionalFeatures","label":"Additional Features","type":"array","required":false,"other_names":["options","equipment"],"generated":true},{"key":"isOneTimePaymentAvailable","label":"One-time Payment Available","type":"boolean","required":false,"other_names":[]},{"key":"isNegotiable","label":"Negotiable","type":"boolean","required":false,"other_names":[]},{"key":"isLeaseAvailable","label":"Lease Available","type":"boolean","required":false,"other_names":[]},{"key":"leaseMonthsRemaining","label":"Lease Months Remaining","type":"number","required":false,"other_names":[]},{"key":"leaseTerms","label":"Lease Terms","type":"array","required":false,"other_names":[]},{"key":"isFinancingAvailable","label":"Financing Available","type":"boolean","required":false,"other_names":[]},{"key":"financingTerms","label":"Financing Terms","type":"text","required":false,"other_names":[]},{"key":"cylinders","label":"Cylinders","type":"number","other_names":["cylinder_count","cylinderCount"]},{"key":"origin","label":"Origin","type":"string","required":false,"other_names":["makeCountry","make-country","manufactureCountry"]},{"key":"engineSize","label":"Engine Size","type":"number","required":false,"other_names":["engineSize","engineCapacity"]},{"key":"horsePower","label":"Horsepower","type":"number","required":false,"other_names":[]},{"key":"mpgCity","label":"MPG City","type":"string","required":false,"other_names":[]},{"key":"mpgHighway","label":"MPG Highway","type":"string","required":false,"other_names":[]},{"key":"wheel","label":"Wheel","type":"string","required":false,"other_names":[]},{"key":"system_id","label":"Inventory System ID","type":"text","required":false,"other_names":[],"generated":false},{"key":"trim","label":"Trim","type":"string","required":false,"other_names":[]},{"key":"cabType","label":"Cab Type","type":"string","required":false,"other_names":[]},{"key":"gvwr","label":"GVWR","type":"string","required":false,"other_names":[]},{"key":"series","label":"Series","type":"string","required":false,"other_names":[]},{"key":"vehicleType","label":"Vehicle Type","type":"string","required":false,"other_names":[]},{"key":"curbWeight","label":"Curb Weight (lbs)","type":"number","required":false,"other_names":[]},{"key":"brakes","label":"Brake System","type":"string","required":false,"other_names":[]},{"key":"batteryType","label":"Battery Type","type":"string","required":false,"other_names":[]},{"key":"batteryCapacity","label":"Battery Capacity (kWh)","type":"number","required":false,"other_names":[]},{"key":"field_1778159528458","label":"Steering Wheel Shape","type":"select","required":false,"options":["Round","Flat-Bottom Sport","Yoke","Squared","D Shaped"],"other_names":[]},{"key":"field_1778590752763","label":"Steering Wheel Position","type":"select","required":false,"options":["Right","Left","Middle"],"other_names":[]}]',
+                'prompt_template' => 'car_inventory',
+                'is_active' => true,
+                'sort_order' => 1,
+                'created_at' => '2026-01-20 11:33:42',
+                'updated_at' => '2026-05-14 05:40:54',
+            ),
+        ));
+        
+        
+    }
+}
