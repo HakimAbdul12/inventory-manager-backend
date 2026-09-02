@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\CrawlJobController;
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\SystemRoleController;
+use App\Http\Controllers\Api\McpController;
 
 
 /*
@@ -603,4 +604,49 @@ Route::prefix('apply')->group(function () {
     Route::get('/{token}', [CreditApplicationController::class, 'publicShow']);
     Route::post('/{token}/submit', [CreditApplicationController::class, 'publicSubmit']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| MCP (Model Context Protocol) Routes
+|--------------------------------------------------------------------------
+|
+| External AI clients (Claude Desktop, Cursor, custom agents) connect here.
+| All actions are tenant-scoped and permission-gated via Sanctum auth.
+|
+*/
+Route::prefix('mcp')->group(function () {
+    // Protocol endpoints — Streamable HTTP transport
+    Route::post('/', [McpController::class, 'handle'])
+        ->middleware(['auth:sanctum', 'tenant', \App\Http\Middleware\McpRateLimiter::class, \App\Http\Middleware\McpAuditLog::class]);
+    Route::get('/', [McpController::class, 'sse'])
+        ->middleware(['auth:sanctum', 'tenant']);
+    Route::delete('/', [McpController::class, 'terminate'])
+        ->middleware(['auth:sanctum']);
+
+    // Dashboard management endpoints
+    Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
+        Route::get('/tools', [McpController::class, 'listTools']);
+        Route::get('/sessions', [McpController::class, 'listSessions']);
+        Route::delete('/sessions/{sessionId}', [McpController::class, 'revokeSession']);
+        Route::get('/connection-info', [McpController::class, 'connectionInfo']);
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| Publishing Pipeline Routes (Protected)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('publishing')->middleware(['auth:sanctum', 'tenant'])->group(function () {
+    // Platforms registry & Super Admin toggle
+    Route::get('/platforms', [\App\Http\Controllers\Api\PublishingPlatformController::class, 'index']);
+    Route::patch('/platforms/{key}/toggle', [\App\Http\Controllers\Api\PublishingPlatformController::class, 'toggle']);
+
+    // Batches & Live Execution
+    Route::get('/batches', [\App\Http\Controllers\Api\PublishingBatchController::class, 'index'])->middleware('permission:inventory.publish');
+    Route::post('/batches', [\App\Http\Controllers\Api\PublishingBatchController::class, 'store'])->middleware('permission:inventory.publish');
+    Route::get('/batches/{id}', [\App\Http\Controllers\Api\PublishingBatchController::class, 'show'])->middleware('permission:inventory.publish');
+    Route::post('/batches/{batchId}/items/{itemId}/retry', [\App\Http\Controllers\Api\PublishingBatchController::class, 'retry'])->middleware('permission:inventory.publish');
+});
+
 

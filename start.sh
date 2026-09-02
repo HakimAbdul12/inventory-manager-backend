@@ -17,7 +17,7 @@ start_tab() {
 # Start all 4 services
 start_tab "SERVER" "php artisan serve"
 start_tab "QUEUE" "php artisan queue:work --queue=inventory,default"
-# start_tab "REVERB" "php artisan reverb:start"
+start_tab "REVERB" "php artisan reverb:start"
 # start_tab "TELEGRAM" "php artisan telegram:ngrok"
 
 echo "✅ All services launched in separate tabs."

@@ -43,10 +43,11 @@ class GenerateInventoryEmbeddingJob implements ShouldQueue
                 // Laravel's DB query builder can save vectors directly by formatting it as '[0.1, 0.2, ...]'
                 $vectorString = '[' . implode(',', $embeddingArray) . ']';
                 
+                $isPgsql = DB::getDriverName() === 'pgsql';
                 DB::table('inventory_items')
                     ->where('id', $this->inventoryItem->id)
                     ->update([
-                        'embedding' => DB::raw("'" . $vectorString . "'::vector")
+                        'embedding' => $isPgsql ? DB::raw("'" . $vectorString . "'::vector") : $vectorString
                     ]);
 
                 Log::info("Successfully generated and saved embedding for InventoryItem {$this->inventoryItem->id}");

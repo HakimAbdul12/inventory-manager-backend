@@ -143,3 +143,16 @@ Broadcast::channel('crawl-job.{jobId}', function ($user, $jobId) {
     $job = \App\Models\CrawlJob::withoutGlobalScope('tenant')->find($jobId);
     return $job && (string)$job->tenant_id === (string)$user->current_tenant_id;
 });
+
+/*
+|--------------------------------------------------------------------------
+| Publishing Batch Channel
+|--------------------------------------------------------------------------
+|
+| Used for broadcasting real-time progress of vehicle publishing tasks.
+|
+*/
+Broadcast::channel('publishing-batch.{batchId}', function ($user, $batchId) {
+    return true; // Allow authenticated users in workspace
+});
+

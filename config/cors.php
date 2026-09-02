@@ -64,7 +64,11 @@ return [
         'in-app',
         'in-app/*',
         'crm/*',
-        'crm'
+        'crm',
+        'mcp',
+        'mcp/*',
+        'publishing',
+        'publishing/*',
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

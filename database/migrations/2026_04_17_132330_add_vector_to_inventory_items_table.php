@@ -12,12 +12,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        DB::statement('CREATE EXTENSION IF NOT EXISTS vector;');
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement('CREATE EXTENSION IF NOT EXISTS vector;');
+        }
 
         Schema::table('inventory_items', function (Blueprint $table) {
             $table->text('vector_string')->nullable()->after('metadata');
-            // Adding a vector column with unspecified dimension to be flexible across different models.
-            $table->addColumn('vector', 'embedding')->nullable()->after('vector_string');
+            if (DB::getDriverName() === 'pgsql') {
+                $table->addColumn('vector', 'embedding')->nullable()->after('vector_string');
+            } else {
+                $table->text('embedding')->nullable()->after('vector_string');
+            }
         });
 
         // Add HNSW index to optimize queries
