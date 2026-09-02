@@ -32,6 +32,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'widget/*',
             'webhooks/*',
             'invitations/*',
+            'mcp',
+            'mcp/*',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
