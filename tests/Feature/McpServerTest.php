@@ -172,6 +172,43 @@ class McpServerTest extends TestCase
         $this->assertStringContainsString('Taycan', $text);
     }
 
+    public function test_mcp_tools_call_create_inventory_item()
+    {
+        Category::create([
+            'name' => 'Wagons',
+            'slug' => 'wagons',
+            'fields' => [],
+        ]);
+
+        $payload = [
+            'jsonrpc' => '2.0',
+            'id' => 5,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'create_inventory_item',
+                'arguments' => [
+                    'make' => 'Audi',
+                    'model' => 'RS6 Avant',
+                    'year' => 2024,
+                    'price' => 125000,
+                    'status' => 'published',
+                    'body_type' => 'Wagon',
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->user)
+            ->withHeader('X-Tenant-ID', $this->tenant->id)
+            ->postJson('/mcp', $payload);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('result.isError', false);
+
+        $text = $response->json('result.content.0.text');
+        $this->assertStringContainsString('Audi RS6 Avant', $text);
+        $this->assertStringContainsString('published', $text);
+    }
+
     public function test_mcp_resources_list_and_read()
     {
         $listPayload = [

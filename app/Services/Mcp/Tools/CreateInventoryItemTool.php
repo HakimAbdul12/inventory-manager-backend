@@ -44,6 +44,19 @@ class CreateInventoryItemTool implements McpTool
                 'drivetrain' => ['type' => 'string', 'description' => 'Drivetrain (FWD, RWD, AWD, 4WD).'],
                 'engine' => ['type' => 'string', 'description' => 'Engine description (e.g., 2.0L Turbo I4).'],
                 'description' => ['type' => 'string', 'description' => 'Marketing description text.'],
+                'status' => [
+                    'type' => 'string',
+                    'enum' => ['draft', 'published', 'archived'],
+                    'description' => 'Vehicle status (defaults to draft).',
+                ],
+                'image_path' => [
+                    'type' => 'string',
+                    'description' => 'Local file path to vehicle image (will be imported and set as primary).',
+                ],
+                'image_url' => [
+                    'type' => 'string',
+                    'description' => 'Public URL or relative path to vehicle image.',
+                ],
                 'features' => [
                     'type' => 'array',
                     'items' => ['type' => 'string'],
@@ -71,6 +84,7 @@ class CreateInventoryItemTool implements McpTool
             'make', 'model', 'year', 'price', 'vin', 'stock_number', 'mileage',
             'exterior_color', 'interior_color', 'body_type', 'transmission',
             'fuel_type', 'drivetrain', 'engine', 'description', 'features',
+            'condition', 'location',
         ];
 
         foreach ($dataFields as $field) {
@@ -86,20 +100,67 @@ class CreateInventoryItemTool implements McpTool
             ($args['model'] ?? '')
         );
 
+        $status = $args['status'] ?? InventoryItem::STATUS_DRAFT;
+        $categoryId = $args['category_id'] ?? \App\Models\Category::first()?->id;
+
         $item = InventoryItem::create([
             'tenant_id' => $tenant->id,
             'user_id' => $user->id,
-            'category_id' => $args['category_id'] ?? null,
-            'status' => InventoryItem::STATUS_DRAFT,
+            'category_id' => $categoryId,
+            'status' => $status,
             'generated_data' => $generatedData,
             'metadata' => ['created_via' => 'mcp'],
         ]);
+
+        $hasImage = false;
+        $imageInput = $args['image_path'] ?? $args['image_url'] ?? null;
+
+        if ($imageInput) {
+            $destDir = storage_path("app/public/inventory/{$item->id}");
+            if (!file_exists($destDir)) {
+                mkdir($destDir, 0755, true);
+            }
+
+            $ext = pathinfo(parse_url($imageInput, PHP_URL_PATH) ?? 'image.jpg', PATHINFO_EXTENSION) ?: 'jpg';
+            $filename = 'image_' . substr(md5(uniqid()), 0, 10) . '.' . $ext;
+            $destPath = "{$destDir}/{$filename}";
+
+            $copied = false;
+            if (file_exists($imageInput)) {
+                $copied = copy($imageInput, $destPath);
+            } elseif (filter_var($imageInput, FILTER_VALIDATE_URL)) {
+                $contents = @file_get_contents($imageInput);
+                if ($contents !== false) {
+                    $copied = (file_put_contents($destPath, $contents) !== false);
+                }
+            }
+
+            if ($copied) {
+                $relativeUrl = "/storage/inventory/{$item->id}/{$filename}";
+                $sizes = [
+                    'original' => $relativeUrl,
+                    'large' => $relativeUrl,
+                    'medium' => $relativeUrl,
+                    'thumbnail' => $relativeUrl,
+                ];
+
+                $item->images()->create([
+                    'path' => "inventory/{$item->id}/{$filename}",
+                    'alt' => $generatedData['title'],
+                    'is_primary' => true,
+                    'is_approved' => true,
+                    'processing_status' => \App\Models\InventoryImage::STATUS_COMPLETED,
+                    'sizes' => $sizes,
+                ]);
+                $hasImage = true;
+            }
+        }
 
         ActivityLogger::record(
             action: 'inventory.created',
             subject: $item,
             description: "Inventory item '{$generatedData['title']}' created via MCP",
-            properties: ['source' => 'mcp', 'tool' => 'create_inventory_item'],
+            properties: ['source' => 'mcp', 'tool' => 'create_inventory_item', 'has_image' => $hasImage],
         );
 
         return [
@@ -108,7 +169,8 @@ class CreateInventoryItemTool implements McpTool
                 'id' => $item->id,
                 'title' => $generatedData['title'],
                 'status' => $item->status,
-                'message' => "Inventory item '{$generatedData['title']}' created in draft status.",
+                'has_image' => $hasImage,
+                'message' => "Inventory item '{$generatedData['title']}' created in {$item->status} status.",
             ], JSON_PRETTY_PRINT)],
         ];
     }

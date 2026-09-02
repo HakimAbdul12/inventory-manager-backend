@@ -47,7 +47,7 @@ class McpController extends Controller
     public function handle(Request $request): JsonResponse
     {
         $user = $request->user();
-        $tenant = app('current_tenant');
+        $tenant = app()->bound('current_tenant') ? app('current_tenant') : null;
 
         if (!$user || !$tenant) {
             return response()->json([
@@ -125,28 +125,13 @@ class McpController extends Controller
      */
     public function sse(Request $request)
     {
-        $sessionId = $request->header('Mcp-Session-Id');
-
-        if (!$sessionId) {
-            return response()->json([
-                'error' => 'Mcp-Session-Id header required for SSE.',
-            ], 400);
-        }
-
-        $session = $this->sessions->validateSession($sessionId);
-        if (!$session) {
-            return response()->json([
-                'error' => 'Invalid or expired session.',
-            ], 400);
-        }
-
-        // Return 200 with content-type to acknowledge the SSE connection
-        // Real-time notifications can be implemented here in the future
-        return response('event: ping\ndata: {"status":"connected"}\n\n', 200, [
-            'Content-Type' => 'text/event-stream',
-            'Cache-Control' => 'no-cache',
-            'Connection' => 'keep-alive',
-        ]);
+        return response()->json([
+            'jsonrpc' => '2.0',
+            'error' => [
+                'code' => -32000,
+                'message' => 'Server-sent events streaming is not supported at this endpoint. Use POST for Streamable HTTP.',
+            ],
+        ], 405, ['Allow' => 'POST, DELETE']);
     }
 
     /**

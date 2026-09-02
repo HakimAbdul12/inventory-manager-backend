@@ -25,8 +25,10 @@ class SetCurrentTenant
             return $next($request);
         }
 
-        // Resolve tenant ID from header or user preference
+        // Resolve tenant ID from header, query param, or user preference
         $tenantId = $request->header('X-Tenant-ID')
+            ?? $request->query('tenant_id')
+            ?? $request->query('tenant')
             ?? $user->current_tenant_id;
 
         $tenant = null;
