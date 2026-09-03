@@ -72,6 +72,11 @@ class InventoryItem extends Model
         return $this->hasMany(InventoryPriceHistory::class)->orderBy('created_at', 'desc');
     }
 
+    public function priceHistory(): HasMany
+    {
+        return $this->priceHistories();
+    }
+
     /**
      * Record a price change for this item.
      */

@@ -39,6 +39,16 @@ class UpdateInventoryItemTool implements McpTool
                     'description' => 'Update the category.',
                 ],
                 'price' => ['type' => 'number', 'description' => 'Update the price.'],
+                'vin' => ['type' => 'string', 'description' => 'Vehicle Identification Number (VIN).'],
+                'make' => ['type' => 'string', 'description' => 'Vehicle make.'],
+                'model' => ['type' => 'string', 'description' => 'Vehicle model.'],
+                'year' => ['type' => 'integer', 'description' => 'Model year.'],
+                'stock_number' => ['type' => 'string', 'description' => 'Dealer stock number.'],
+                'body_type' => ['type' => 'string', 'description' => 'Body type (sedan, SUV, truck, coupe, etc.).'],
+                'transmission' => ['type' => 'string', 'description' => 'Transmission type.'],
+                'fuel_type' => ['type' => 'string', 'description' => 'Fuel type.'],
+                'drivetrain' => ['type' => 'string', 'description' => 'Drivetrain.'],
+                'engine' => ['type' => 'string', 'description' => 'Engine description.'],
                 'mileage' => ['type' => 'integer', 'description' => 'Update the mileage.'],
                 'description' => ['type' => 'string', 'description' => 'Update the description.'],
                 'exterior_color' => ['type' => 'string', 'description' => 'Update exterior color.'],
@@ -85,7 +95,9 @@ class UpdateInventoryItemTool implements McpTool
         // Update generated_data fields
         $dataFields = [
             'price', 'mileage', 'description', 'exterior_color',
-            'interior_color', 'features',
+            'interior_color', 'features', 'vin', 'make', 'model',
+            'year', 'stock_number', 'body_type', 'transmission',
+            'fuel_type', 'drivetrain', 'engine',
         ];
         foreach ($dataFields as $field) {
             if (array_key_exists($field, $args)) {
@@ -95,6 +107,14 @@ class UpdateInventoryItemTool implements McpTool
                     $changes[$field] = ['old' => $oldValue, 'new' => $args[$field]];
                 }
             }
+        }
+
+        if (isset($changes['make']) || isset($changes['model']) || isset($changes['year'])) {
+            $updatedData['title'] = trim(
+                ($updatedData['year'] ?? '') . ' ' .
+                ($updatedData['make'] ?? '') . ' ' .
+                ($updatedData['model'] ?? '')
+            );
         }
 
         $modelUpdates = ['generated_data' => $updatedData];
