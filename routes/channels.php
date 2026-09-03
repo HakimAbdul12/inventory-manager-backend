@@ -156,3 +156,19 @@ Broadcast::channel('publishing-batch.{batchId}', function ($user, $batchId) {
     return true; // Allow authenticated users in workspace
 });
 
+/*
+|--------------------------------------------------------------------------
+| Inventory Channel
+|--------------------------------------------------------------------------
+|
+| Used for broadcasting real-time inventory updates such as price changes.
+|
+*/
+Broadcast::channel('inventory', function () {
+    return true;
+});
+
+Broadcast::channel('tenant.{tenantId}.inventory', function () {
+    return true;
+});
+

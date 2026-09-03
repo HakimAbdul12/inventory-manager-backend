@@ -77,13 +77,27 @@ class InventoryItem extends Model
      */
     public function recordPriceChange(?float $oldPrice, float $newPrice, string $source = 'manual', ?string $userId = null, ?string $notes = null): InventoryPriceHistory
     {
-        return $this->priceHistories()->create([
+        $data = $this->generated_data ?? [];
+        $data['price'] = $newPrice;
+        $this->update(['generated_data' => $data]);
+
+        $history = $this->priceHistories()->create([
             'old_price' => $oldPrice,
             'new_price' => $newPrice,
             'changed_by' => $userId ?? auth()->id(),
             'source' => $source,
             'notes' => $notes,
         ]);
+
+        event(new \App\Events\InventoryPriceUpdated(
+            item: $this,
+            oldPrice: $oldPrice,
+            newPrice: $newPrice,
+            source: $source,
+            userId: $userId
+        ));
+
+        return $history;
     }
 
     /**

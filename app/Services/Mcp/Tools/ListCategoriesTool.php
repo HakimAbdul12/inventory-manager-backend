@@ -16,7 +16,7 @@ class ListCategoriesTool implements McpTool
 
     public function description(): string
     {
-        return 'List all available product categories (e.g., Cars, Trucks, SUVs). Categories are hierarchical with parent-child relationships.';
+        return 'List all available product categories (e.g., Cars, Phones).';
     }
 
     public function inputSchema(): array
@@ -24,9 +24,9 @@ class ListCategoriesTool implements McpTool
         return [
             'type' => 'object',
             'properties' => [
-                'parent_id' => [
-                    'type' => 'string',
-                    'description' => 'Optional parent category ID to list only children of a specific category.',
+                'active_only' => [
+                    'type' => 'boolean',
+                    'description' => 'Optional filter to return only active categories. Default: false.',
                 ],
             ],
         ];
@@ -44,13 +44,13 @@ class ListCategoriesTool implements McpTool
 
     public function execute(array $args, User $user, Tenant $tenant): array
     {
-        $query = Category::orderBy('name');
+        $query = Category::query();
 
-        if (isset($args['parent_id'])) {
-            $query->where('parent_id', $args['parent_id']);
+        if (!empty($args['active_only'])) {
+            $query->active();
         }
 
-        $categories = $query->get(['id', 'name', 'slug', 'parent_id', 'description'])->toArray();
+        $categories = $query->orderBy('name')->get(['id', 'name', 'slug', 'description', 'icon', 'is_active', 'sort_order'])->toArray();
 
         $text = empty($categories)
             ? "No categories found."
@@ -61,3 +61,4 @@ class ListCategoriesTool implements McpTool
         ];
     }
 }
+

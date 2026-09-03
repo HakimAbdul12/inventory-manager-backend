@@ -113,6 +113,17 @@ class UpdateInventoryItemTool implements McpTool
 
         $item->update($modelUpdates);
 
+        // Record price change and broadcast event if price changed
+        if (isset($changes['price'])) {
+            $item->recordPriceChange(
+                oldPrice: $changes['price']['old'] !== null ? (float) $changes['price']['old'] : null,
+                newPrice: (float) $changes['price']['new'],
+                source: 'mcp',
+                userId: (string) $user->id,
+                notes: 'Updated via MCP tool'
+            );
+        }
+
         if (!empty($changes)) {
             ActivityLogger::record(
                 action: 'inventory.updated',

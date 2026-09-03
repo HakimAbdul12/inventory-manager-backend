@@ -432,5 +432,153 @@ class McpServerTest extends TestCase
         $this->assertTrue($response->json('result.isError'));
         $this->assertStringContainsString('Permission denied', $response->json('result.content.0.text'));
     }
+
+    public function test_mcp_tools_call_create_inventory_item_bulk()
+    {
+        $category = Category::create([
+            'name' => 'Sports Cars',
+            'slug' => 'sports-cars',
+            'fields' => [],
+        ]);
+
+        $payload = [
+            'jsonrpc' => '2.0',
+            'id' => 30,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'create_inventory_item',
+                'arguments' => [
+                    'items' => [
+                        [
+                            'make' => 'Ferrari',
+                            'model' => '296 GTB',
+                            'year' => 2024,
+                            'price' => 340000,
+                            'fuel_type' => 'Hybrid',
+                            'category_id' => $category->id,
+                        ],
+                        [
+                            'make' => 'McLaren',
+                            'model' => '750S',
+                            'year' => 2024,
+                            'price' => 330000,
+                            'fuel_type' => 'Gasoline',
+                            'category_id' => $category->id,
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->user)
+            ->withHeader('X-Tenant-ID', $this->tenant->id)
+            ->postJson('/mcp', $payload);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('result.isError', false);
+
+        $data = json_decode($response->json('result.content.0.text'), true);
+        $this->assertTrue($data['success']);
+        $this->assertEquals(2, $data['count']);
+        $this->assertCount(2, $data['items']);
+        $this->assertCount(2, $data['inventory_ids']);
+
+        $this->assertDatabaseHas('inventory_items', [
+            'tenant_id' => $this->tenant->id,
+            'generated_data->make' => 'Ferrari',
+            'generated_data->model' => '296 GTB',
+        ]);
+        $this->assertDatabaseHas('inventory_items', [
+            'tenant_id' => $this->tenant->id,
+            'generated_data->make' => 'McLaren',
+            'generated_data->model' => '750S',
+        ]);
+    }
+
+    public function test_mcp_tools_call_publish_inventory_item_multi_vehicle_single_batch()
+    {
+        \App\Models\PublishingPlatform::create([
+            'name' => 'CarGurus',
+            'key' => 'cargurus',
+            'is_active' => true,
+        ]);
+        \App\Models\PublishingPlatform::create([
+            'name' => 'AutoTech',
+            'key' => 'autotech',
+            'is_active' => true,
+        ]);
+
+        $category = Category::create([
+            'name' => 'Luxury',
+            'slug' => 'luxury',
+            'fields' => [],
+        ]);
+
+        $car1 = InventoryItem::create([
+            'tenant_id' => $this->tenant->id,
+            'user_id' => $this->user->id,
+            'category_id' => $category->id,
+            'status' => 'draft',
+            'generated_data' => [
+                'title' => '2024 Aston Martin DB12',
+                'make' => 'Aston Martin',
+                'model' => 'DB12',
+                'year' => 2024,
+                'fuel_type' => 'Gasoline',
+            ],
+        ]);
+
+        $car2 = InventoryItem::create([
+            'tenant_id' => $this->tenant->id,
+            'user_id' => $this->user->id,
+            'category_id' => $category->id,
+            'status' => 'draft',
+            'generated_data' => [
+                'title' => '2024 Bentley Continental GT',
+                'make' => 'Bentley',
+                'model' => 'Continental GT',
+                'year' => 2024,
+                'fuel_type' => 'Gasoline',
+            ],
+        ]);
+
+        $payload = [
+            'jsonrpc' => '2.0',
+            'id' => 31,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'publish_inventory_item',
+                'arguments' => [
+                    'inventory_ids' => [$car1->id, $car2->id],
+                    'platforms' => ['cargurus', 'autotech'],
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->user)
+            ->withHeader('X-Tenant-ID', $this->tenant->id)
+            ->postJson('/mcp', $payload);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('result.isError', false);
+
+        $data = json_decode($response->json('result.content.0.text'), true);
+        $this->assertTrue($data['success']);
+        $this->assertEquals(2, $data['batch']['vehicles_count']);
+        // 2 vehicles * 2 platforms = 4 total tasks
+        $this->assertEquals(4, $data['batch']['total_tasks']);
+
+        // Assert exactly ONE single batch was created
+        $batchId = $data['batch']['id'];
+        $batch = \App\Models\PublishingBatch::find($batchId);
+        $this->assertNotNull($batch);
+        $this->assertEquals(4, $batch->total_items);
+        $this->assertEquals(2, $batch->metadata['vehicles_count']);
+
+        // Assert all vehicles marked published
+        $this->assertEquals('published', $car1->fresh()->status);
+        $this->assertEquals('published', $car2->fresh()->status);
+    }
 }
+
 
