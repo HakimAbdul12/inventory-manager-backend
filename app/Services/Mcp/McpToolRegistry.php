@@ -153,5 +153,6 @@ class McpToolRegistry
         $this->register(app(Tools\GenerateDescriptionTool::class));
         $this->register(app(Tools\AnalyzeInventoryTool::class));
         $this->register(app(Tools\SearchKnowledgeBaseTool::class));
+        $this->register(app(Tools\PublishInventoryItemTool::class));
     }
 }

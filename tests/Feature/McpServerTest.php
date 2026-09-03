@@ -209,6 +209,65 @@ class McpServerTest extends TestCase
         $this->assertStringContainsString('published', $text);
     }
 
+    public function test_mcp_tools_call_publish_inventory_item()
+    {
+        \App\Models\PublishingPlatform::create([
+            'name' => 'OnlyEV',
+            'key' => 'onlyev',
+            'is_active' => true,
+        ]);
+        \App\Models\PublishingPlatform::create([
+            'name' => 'CarGurus',
+            'key' => 'cargurus',
+            'is_active' => true,
+        ]);
+
+        $category = Category::create([
+            'name' => 'Sedans',
+            'slug' => 'sedans',
+            'fields' => [],
+        ]);
+
+        InventoryItem::create([
+            'tenant_id' => $this->tenant->id,
+            'user_id' => $this->user->id,
+            'category_id' => $category->id,
+            'status' => 'draft',
+            'generated_data' => [
+                'title' => '2024 Porsche Taycan 4S',
+                'make' => 'Porsche',
+                'model' => 'Taycan',
+                'year' => 2024,
+                'fuel_type' => 'Electric',
+                'price' => 110000,
+            ],
+        ]);
+
+        $payload = [
+            'jsonrpc' => '2.0',
+            'id' => 6,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'publish_inventory_item',
+                'arguments' => [
+                    'query' => 'Taycan',
+                    'platforms' => ['onlyev', 'cargurus'],
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->user)
+            ->withHeader('X-Tenant-ID', $this->tenant->id)
+            ->postJson('/mcp', $payload);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('result.isError', false);
+
+        $text = $response->json('result.content.0.text');
+        $this->assertStringContainsString('Taycan', $text);
+        $this->assertStringContainsString('Publishing batch initiated', $text);
+    }
+
     public function test_mcp_resources_list_and_read()
     {
         $listPayload = [

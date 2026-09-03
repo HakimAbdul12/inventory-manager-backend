@@ -20,9 +20,15 @@ class PublishingItemStatusUpdated implements ShouldBroadcastNow
 
     public function broadcastOn(): array
     {
-        return [
+        $channels = [
             new Channel("publishing-batch.{$this->batchItem->batch_id}"),
         ];
+
+        if ($this->batchItem->batch?->tenant_id) {
+            $channels[] = new Channel("tenant.{$this->batchItem->batch->tenant_id}.publishing");
+        }
+
+        return $channels;
     }
 
     public function broadcastAs(): string
@@ -33,11 +39,14 @@ class PublishingItemStatusUpdated implements ShouldBroadcastNow
     public function broadcastWith(): array
     {
         $batch = $this->batchItem->batch;
+        $item = $this->batchItem->inventoryItem;
+        $vehicleTitle = $item?->generated_data['title'] ?? 'Vehicle';
 
         return [
             'batch_id' => $this->batchItem->batch_id,
             'batch_item_id' => $this->batchItem->id,
             'inventory_item_id' => $this->batchItem->inventory_item_id,
+            'vehicle_title' => $vehicleTitle,
             'platform_key' => $this->batchItem->platform_key,
             'format' => $this->batchItem->format,
             'status' => $this->batchItem->status,

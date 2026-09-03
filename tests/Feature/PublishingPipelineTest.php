@@ -260,4 +260,131 @@ class PublishingPipelineTest extends TestCase
             ->assertJsonPath('data.vehicles.0.title', '2024 Audi e-tron GT')
             ->assertJsonCount(2, 'data.vehicles.0.platforms');
     }
+
+    public function test_batch_skips_ineligible_platform_rules_onlyev()
+    {
+        // Gasoline vehicle
+        $gasVehicle = InventoryItem::create([
+            'tenant_id' => $this->tenant->id,
+            'user_id' => $this->dealerUser->id,
+            'category_id' => $this->category->id,
+            'status' => 'draft',
+            'generated_data' => [
+                'title' => '2024 Ford Mustang GT',
+                'make' => 'Ford',
+                'model' => 'Mustang',
+                'year' => 2024,
+                'fuel_type' => 'Gasoline',
+                'price' => 55000,
+            ],
+            'metadata' => [],
+        ]);
+
+        $payload = [
+            'inventory_ids' => [$gasVehicle->id],
+            'platforms' => [
+                ['id' => 'onlyev', 'format' => 'image'],
+                ['id' => 'autotech', 'format' => 'image'],
+            ],
+        ];
+
+        $response = $this->actingAs($this->superAdmin)
+            ->withHeader('X-Tenant-ID', $this->tenant->id)
+            ->postJson('/publishing/batches', $payload);
+
+        $response->assertStatus(201);
+        $batchId = $response->json('data.batch_id');
+
+        $onlyEvItem = PublishingBatchItem::where('batch_id', $batchId)
+            ->where('platform_key', 'onlyev')
+            ->first();
+
+        $this->assertNotNull($onlyEvItem);
+        $this->assertEquals('skipped', $onlyEvItem->status);
+        $this->assertStringContainsString('OnlyEV requires Electric or Hybrid vehicles', $onlyEvItem->error_message);
+    }
+
+    public function test_batch_deduplication_reuses_previous_publishing()
+    {
+        $v = $this->createVehicle('2024 Rivian R1T');
+
+        // Batch 1 publishes on autotech
+        $batch1 = PublishingBatch::create([
+            'tenant_id' => $this->tenant->id,
+            'user_id' => $this->dealerUser->id,
+            'status' => 'completed',
+            'total_items' => 1,
+            'successful_items' => 1,
+            'failed_items' => 0,
+        ]);
+
+        PublishingBatchItem::create([
+            'batch_id' => $batch1->id,
+            'inventory_item_id' => $v->id,
+            'platform_key' => 'autotech',
+            'format' => 'image',
+            'status' => 'published',
+            'attempts' => 1,
+            'max_attempts' => 3,
+        ]);
+
+        // Batch 2 targets autotech and carguru
+        $payload = [
+            'inventory_ids' => [$v->id],
+            'platforms' => [
+                ['id' => 'autotech', 'format' => 'image'],
+                ['id' => 'carguru', 'format' => 'image'],
+            ],
+        ];
+
+        $response = $this->actingAs($this->superAdmin)
+            ->withHeader('X-Tenant-ID', $this->tenant->id)
+            ->postJson('/publishing/batches', $payload);
+
+        $response->assertStatus(201);
+        $batch2Id = $response->json('data.batch_id');
+
+        $autotechItem = PublishingBatchItem::where('batch_id', $batch2Id)
+            ->where('platform_key', 'autotech')
+            ->first();
+
+        $this->assertNotNull($autotechItem);
+        $this->assertEquals('published', $autotechItem->status);
+        $this->assertStringContainsString('Already published', $autotechItem->error_message);
+    }
+
+    public function test_get_active_publishing_batch()
+    {
+        $v = $this->createVehicle('2024 Lucid Air');
+
+        $batch = PublishingBatch::create([
+            'tenant_id' => $this->tenant->id,
+            'user_id' => $this->dealerUser->id,
+            'status' => 'in_progress',
+            'total_items' => 2,
+            'successful_items' => 1,
+            'failed_items' => 0,
+        ]);
+
+        PublishingBatchItem::create([
+            'batch_id' => $batch->id,
+            'inventory_item_id' => $v->id,
+            'platform_key' => 'onlyev',
+            'format' => 'image',
+            'status' => 'in_progress',
+            'attempts' => 1,
+            'max_attempts' => 3,
+        ]);
+
+        $response = $this->actingAs($this->superAdmin)
+            ->withHeader('X-Tenant-ID', $this->tenant->id)
+            ->getJson('/publishing/batches/active');
+
+        $response->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.batch_id', $batch->id)
+            ->assertJsonPath('data.status', 'in_progress')
+            ->assertJsonPath('data.current_platform', 'onlyev')
+            ->assertJsonPath('data.current_vehicle_title', '2024 Lucid Air');
+    }
 }

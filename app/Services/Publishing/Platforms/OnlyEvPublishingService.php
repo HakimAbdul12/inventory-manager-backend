@@ -27,7 +27,23 @@ class OnlyEvPublishingService implements PublishingPlatformService
                         str_contains($fuelType, 'hybrid') ||
                         str_contains($fuelType, 'phev') ||
                         str_contains(strtolower($vehicleData['model'] ?? ''), 'taycan') ||
-                        str_contains(strtolower($vehicleData['model'] ?? ''), 'tesla');
+                        str_contains(strtolower($vehicleData['model'] ?? ''), 'tesla') ||
+                        str_contains(strtolower($vehicleData['model'] ?? ''), 'cybertruck') ||
+                        str_contains(strtolower($vehicleData['model'] ?? ''), 'ioniq') ||
+                        str_contains(strtolower($vehicleData['model'] ?? ''), 'leaf') ||
+                        str_contains(strtolower($vehicleData['model'] ?? ''), 'mach-e') ||
+                        str_contains(strtolower($vehicleData['model'] ?? ''), 'rivian') ||
+                        str_contains(strtolower($vehicleData['model'] ?? ''), 'lucid');
+
+        if (!$isEvOrHybrid) {
+            $currentFuel = !empty($vehicleData['fuel_type']) ? ucfirst($vehicleData['fuel_type']) : 'Gasoline';
+            return [
+                'success' => false,
+                'skipped' => true,
+                'reason' => "OnlyEV requires Electric or Hybrid vehicles (current: {$currentFuel}).",
+                'message' => "Skipped: OnlyEV requires Electric or Hybrid vehicles (current: {$currentFuel}).",
+            ];
+        }
 
         return [
             'success' => true,

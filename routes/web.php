@@ -644,6 +644,7 @@ Route::prefix('publishing')->middleware(['auth:sanctum', 'tenant'])->group(funct
 
     // Batches & Live Execution
     Route::get('/batches', [\App\Http\Controllers\Api\PublishingBatchController::class, 'index'])->middleware('permission:inventory.publish');
+    Route::get('/batches/active', [\App\Http\Controllers\Api\PublishingBatchController::class, 'active'])->middleware('permission:inventory.publish');
     Route::post('/batches', [\App\Http\Controllers\Api\PublishingBatchController::class, 'store'])->middleware('permission:inventory.publish');
     Route::get('/batches/{id}', [\App\Http\Controllers\Api\PublishingBatchController::class, 'show'])->middleware('permission:inventory.publish');
     Route::post('/batches/{batchId}/items/{itemId}/retry', [\App\Http\Controllers\Api\PublishingBatchController::class, 'retry'])->middleware('permission:inventory.publish');

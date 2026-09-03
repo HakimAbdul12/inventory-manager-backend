@@ -44,6 +44,48 @@ class PublishingBatchController extends Controller
     }
 
     /**
+     * Get the latest active in-progress publishing batch for the workspace.
+     */
+    public function active(Request $request): JsonResponse
+    {
+        $tenant = app('current_tenant');
+        if (!$tenant) {
+            return response()->json(['success' => false, 'message' => 'No active tenant.'], 400);
+        }
+
+        $activeBatch = PublishingBatch::where('tenant_id', $tenant->id)
+            ->where('status', 'in_progress')
+            ->with(['items' => function ($q) {
+                $q->with('inventoryItem:id,generated_data');
+            }])
+            ->latest()
+            ->first();
+
+        if (!$activeBatch) {
+            return response()->json([
+                'success' => true,
+                'data' => null,
+            ]);
+        }
+
+        $activeItem = $activeBatch->items->firstWhere('status', 'in_progress');
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'batch_id' => $activeBatch->id,
+                'status' => $activeBatch->status,
+                'total_items' => $activeBatch->total_items,
+                'successful_items' => $activeBatch->successful_items,
+                'failed_items' => $activeBatch->failed_items,
+                'current_vehicle_title' => $activeItem?->inventoryItem?->generated_data['title'] ?? null,
+                'current_platform' => $activeItem?->platform_key ?? null,
+                'created_at' => $activeBatch->created_at?->toIso8601String(),
+            ],
+        ]);
+    }
+
+    /**
      * Create and trigger a new publishing batch.
      */
     public function store(Request $request): JsonResponse
@@ -67,7 +109,7 @@ class PublishingBatchController extends Controller
         // Filter valid vehicles belonging to tenant
         $items = InventoryItem::where('tenant_id', $tenant->id)
             ->whereIn('id', $inventoryIds)
-            ->get(['id']);
+            ->get();
 
         if ($items->isEmpty()) {
             return response()->json([
@@ -87,6 +129,11 @@ class PublishingBatchController extends Controller
             ], 422);
         }
 
+        // Update all selected vehicles to published status
+        InventoryItem::where('tenant_id', $tenant->id)
+            ->whereIn('id', $inventoryIds)
+            ->update(['status' => InventoryItem::STATUS_PUBLISHED]);
+
         $totalTasks = count($items) * count($validPlatforms);
 
         $batch = DB::transaction(function () use ($tenant, $request, $items, $validPlatforms, $totalTasks) {
@@ -105,33 +152,113 @@ class PublishingBatchController extends Controller
             ]);
 
             foreach ($items as $item) {
-                $firstItem = null;
-                foreach ($validPlatforms as $index => $platform) {
-                    $isFirst = ($index === 0);
+                $firstItemToDispatch = null;
+                $vehicleData = $item->generated_data ?? [];
+
+                foreach ($validPlatforms as $platform) {
+                    $platformKey = $platform['id'];
+
+                    // 1. Deduplication: Check if already published previously
+                    $alreadyPublished = \App\Models\InventoryPublishingStatus::where('tenant_id', $tenant->id)
+                        ->where('inventory_item_id', $item->id)
+                        ->where('platform_name', $platformKey)
+                        ->where('status', 'success')
+                        ->exists();
+
+                    if (!$alreadyPublished) {
+                        $alreadyPublished = PublishingBatchItem::where('inventory_item_id', $item->id)
+                            ->where('platform_key', $platformKey)
+                            ->where('status', 'published')
+                            ->exists();
+                    }
+
+                    if ($alreadyPublished) {
+                        PublishingBatchItem::create([
+                            'batch_id' => $batch->id,
+                            'inventory_item_id' => $item->id,
+                            'platform_key' => $platformKey,
+                            'format' => $platform['format'] ?? 'image',
+                            'status' => 'published',
+                            'attempts' => 1,
+                            'max_attempts' => 3,
+                            'error_message' => 'Already published. Existing publication reused.',
+                            'last_attempted_at' => now(),
+                        ]);
+                        continue;
+                    }
+
+                    // 2. Platform rules: OnlyEV requires EV/Hybrid
+                    if ($platformKey === 'onlyev') {
+                        $fuelType = strtolower($vehicleData['fuel_type'] ?? $vehicleData['engine'] ?? '');
+                        $isEvOrHybrid = str_contains($fuelType, 'electric') ||
+                                        str_contains($fuelType, 'hybrid') ||
+                                        str_contains($fuelType, 'phev') ||
+                                        str_contains(strtolower($vehicleData['model'] ?? ''), 'taycan') ||
+                                        str_contains(strtolower($vehicleData['model'] ?? ''), 'tesla') ||
+                                        str_contains(strtolower($vehicleData['model'] ?? ''), 'cybertruck') ||
+                                        str_contains(strtolower($vehicleData['model'] ?? ''), 'ioniq') ||
+                                        str_contains(strtolower($vehicleData['model'] ?? ''), 'leaf') ||
+                                        str_contains(strtolower($vehicleData['model'] ?? ''), 'mach-e') ||
+                                        str_contains(strtolower($vehicleData['model'] ?? ''), 'rivian') ||
+                                        str_contains(strtolower($vehicleData['model'] ?? ''), 'lucid');
+
+                        if (!$isEvOrHybrid) {
+                            $currentFuel = !empty($vehicleData['fuel_type']) ? ucfirst($vehicleData['fuel_type']) : 'Gasoline';
+                            PublishingBatchItem::create([
+                                'batch_id' => $batch->id,
+                                'inventory_item_id' => $item->id,
+                                'platform_key' => $platformKey,
+                                'format' => $platform['format'] ?? 'image',
+                                'status' => 'skipped',
+                                'attempts' => 0,
+                                'max_attempts' => 3,
+                                'error_message' => "OnlyEV requires Electric or Hybrid vehicles (current: {$currentFuel}).",
+                                'last_attempted_at' => now(),
+                            ]);
+                            continue;
+                        }
+                    }
+
+                    // 3. Normal queueable platform item
+                    $isFirstPending = ($firstItemToDispatch === null);
                     $batchItem = PublishingBatchItem::create([
                         'batch_id' => $batch->id,
                         'inventory_item_id' => $item->id,
-                        'platform_key' => $platform['id'],
+                        'platform_key' => $platformKey,
                         'format' => $platform['format'] ?? 'image',
-                        'status' => $isFirst ? 'in_progress' : 'pending',
-                        'attempts' => $isFirst ? 1 : 0,
+                        'status' => $isFirstPending ? 'in_progress' : 'pending',
+                        'attempts' => $isFirstPending ? 1 : 0,
                         'max_attempts' => 3,
-                        'last_attempted_at' => $isFirst ? now() : null,
+                        'last_attempted_at' => $isFirstPending ? now() : null,
                     ]);
 
-                    if ($isFirst) {
-                        $firstItem = $batchItem;
+                    if ($isFirstPending) {
+                        $firstItemToDispatch = $batchItem;
                     }
                 }
 
-                // Dispatch the first platform job; subsequent platforms will trigger sequentially on completion
-                if ($firstItem) {
-                    ProcessPublishingItemJob::dispatch($firstItem->id);
+                // Dispatch the first pending platform job for this vehicle
+                if ($firstItemToDispatch) {
+                    ProcessPublishingItemJob::dispatch($firstItemToDispatch->id);
                 }
             }
 
+            $batch->updateProgress();
             return $batch;
         });
+
+        // Broadcast initial status update on tenant channel
+        $firstItem = $batch->items()->first();
+        if ($firstItem) {
+            try {
+                event(new \App\Events\PublishingItemStatusUpdated(
+                    $firstItem,
+                    ['message' => 'Publishing batch initiated.']
+                ));
+            } catch (\Throwable $e) {
+                // Ignore broadcast error
+            }
+        }
 
         return response()->json([
             'success' => true,

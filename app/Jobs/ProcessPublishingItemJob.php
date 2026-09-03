@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Events\PublishingItemStatusUpdated;
+use App\Models\InventoryItem;
 use App\Models\InventoryPublishingStatus;
 use App\Models\PublishingBatchItem;
 use App\Services\Publishing\PublishingManager;
@@ -71,12 +72,34 @@ class ProcessPublishingItemJob implements ShouldQueue
                 $service = $manager->getService($platformKey);
                 $result = $service->publish($item, ['format' => $batchItem->format]);
 
+                if (!empty($result['skipped'])) {
+                    // Platform skipped due to platform business rule (e.g., non-EV on OnlyEV)
+                    $batchItem->update([
+                        'status' => 'skipped',
+                        'error_message' => $result['reason'] ?? $result['message'] ?? 'Skipped by platform rule.',
+                    ]);
+
+                    $batch->updateProgress();
+
+                    $this->broadcastUpdate($batchItem, [
+                        'message' => $result['message'] ?? 'Skipped by platform rule.',
+                    ]);
+
+                    // Trigger the next sequential platform for this vehicle
+                    $this->dispatchNextItem($batchItem);
+
+                    return; // Done with skipped
+                }
+
                 if (!empty($result['success'])) {
                     // Success!
                     $batchItem->update([
                         'status' => 'published',
                         'error_message' => null,
                     ]);
+
+                    // Ensure InventoryItem status is published
+                    $item->update(['status' => InventoryItem::STATUS_PUBLISHED]);
 
                     // Sync with legacy InventoryPublishingStatus table for VDP tab
                     InventoryPublishingStatus::updateOrCreate(
