@@ -69,6 +69,8 @@ return [
         'mcp/*',
         'publishing',
         'publishing/*',
+        'activity-logs/*',
+        'activity-logs'
     ],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
